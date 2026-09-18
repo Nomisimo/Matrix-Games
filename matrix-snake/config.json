@@ -1,0 +1,8 @@
+{
+  "output_mode": "ndi",
+  "matrix1_universe_start": 29,
+  "matrix2_universe_start": 33,
+  "fixtures_per_universe": 144,
+  "bind_ip": "2.2.4.30",
+  "ndi_stream_name": "Matrix Snake"
+}
