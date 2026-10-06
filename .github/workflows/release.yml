@@ -1,11 +1,13 @@
 # Baut die Mac-App (Apple Silicon und Intel) und veröffentlicht sie als GitHub-Release.
-# Auslöser: Tag „v…“ pushen (z. B. git tag v1.0.0-beta.1 && git push origin v1.0.0-beta.1)
-# oder unter Actions → Release → „Run workflow“. Tags mit Bindestrich werden Vorabversionen.
+# Auslöser: Tag „v…“ pushen (z. B. git tag v1.0.0-beta.1 && git push origin v1.0.0-beta.1),
+# ein Push mit „[release]“ in der Commit-Nachricht (legt den Tag v<version> selbst an)
+# oder unter Actions → Release → „Run workflow“. Versionen mit Bindestrich werden Vorabversionen.
 name: Release
 
 on:
   push:
     tags: ["v*"]
+    branches: ["**"]
   workflow_dispatch:
 
 permissions:
@@ -14,6 +16,7 @@ permissions:
 jobs:
   build:
     name: Build ${{ matrix.name }}
+    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[release]')
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
