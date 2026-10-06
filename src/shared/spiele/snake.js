@@ -101,15 +101,74 @@ export class SnakeRunde {
     if (this.growth > 0) this.growth--; else this.body.pop();
     return false;
   }
-  render(b) {
+  render(b, hud = true) {
     b.fill(BLACK);
     b.rect(0, 0, 48, 1, WALL); b.rect(0, 23, 48, 1, WALL); b.rect(0, 0, 1, 24, WALL); b.rect(47, 0, 1, 24, WALL);
     if (this.food && Math.floor(this.blink * 6) % 3 !== 0) b.set(this.food[0], this.food[1], FOOD);
     for (let i = this.body.length - 1; i >= 0; i--) b.set(this.body[i][0], this.body[i][1], i === 0 ? HEAD : BODY);
+    if (!hud) return;
     drawText(b, String(this.score), 2, 1, SCORE_C);
     const lvl = "L" + (this.level + 1);
     drawText(b, lvl, 45 - textWidth(lvl), 1, SCORE_C);
   }
+}
+
+/* ── Demo: die Schlange spielt selbst ──────────────────────────────────────
+   Kürzester Weg zum Futter (Breitensuche), aber nur, wenn danach genug Platz bleibt;
+   sonst in Richtung des größten freien Bereichs. Ohne Text, ohne Ton. */
+const NACHBARN = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+const frei = (x, y, occ) => X1 <= x && x <= X2 && Y1 <= y && y <= Y2 && !occ.has(k(x, y));
+function flaeche(sx, sy, occ, max) {
+  const seen = new Set([k(sx, sy)]), q = [[sx, sy]];
+  while (q.length && seen.size < max) {
+    const [x, y] = q.shift();
+    for (const [dx, dy] of NACHBARN) {
+      const nx = x + dx, ny = y + dy, key = k(nx, ny);
+      if (!seen.has(key) && frei(nx, ny, occ)) { seen.add(key); q.push([nx, ny]); }
+    }
+  }
+  return seen.size;
+}
+export function snakeZug(g) {
+  const occ = g.occupancy();
+  const [tx, ty] = g.body[g.body.length - 1];
+  if (g.growth <= 0) occ.delete(k(tx, ty));
+  const [hx, hy] = g.head;
+  const moves = NACHBARN.filter(([dx, dy]) => !(dx === -g.dir[0] && dy === -g.dir[1]) && frei(hx + dx, hy + dy, occ));
+  if (!moves.length) return null;
+  const platz = (dx, dy) => flaeche(hx + dx, hy + dy, occ, g.body.length + 8);
+  // Breitensuche zum Futter
+  if (g.food) {
+    const ziel = k(g.food[0], g.food[1]), erster = new Map();
+    const q = [];
+    for (const [dx, dy] of moves) { const key = k(hx + dx, hy + dy); erster.set(key, [dx, dy]); q.push([hx + dx, hy + dy]); }
+    while (q.length) {
+      const [x, y] = q.shift(), key = k(x, y);
+      if (key === ziel) {
+        const m = erster.get(key);
+        if (platz(...m) >= g.body.length + 4) return m;
+        break;
+      }
+      for (const [dx, dy] of NACHBARN) {
+        const nx = x + dx, ny = y + dy, nk = k(nx, ny);
+        if (!erster.has(nk) && frei(nx, ny, occ)) { erster.set(nk, erster.get(key)); q.push([nx, ny]); }
+      }
+    }
+  }
+  return moves.map((m) => [m, platz(...m)]).sort((a, b) => b[1] - a[1])[0][0];
+}
+
+export function createSnakeDemo() {
+  let g = new SnakeRunde(), tot = 0;
+  return {
+    step() {
+      if (tot > 0) { if (--tot === 0) g = new SnakeRunde(); return; }
+      const m = snakeZug(g);
+      if (m) g.setDir(...m);
+      if (g.update(DT) === "dead") tot = 60;
+    },
+    render(b) { g.render(b, false); },
+  };
 }
 
 const DECO = [[32, 10], [31, 10], [30, 10], [29, 10], [28, 10], [28, 11], [28, 12], [29, 12], [30, 12], [31, 12]];
@@ -123,7 +182,7 @@ export function createSnake({ ton = () => {} } = {}) {
     get score() { return game?.score || 0; },
     key(code) {
       if (state === "title") { if (code === "Space") neu(); }
-      else if (state === "playing") { if (code === "Escape") state = "paused"; else game.handleKey(code); }
+      else if (state === "playing") { if (code === "Escape" || code === "KeyP") state = "paused"; else game.handleKey(code); }
       else if (state === "paused") {
         if (["Escape", "Space", "KeyP"].includes(code)) state = "playing";
         else if (code === "KeyQ") state = "title";

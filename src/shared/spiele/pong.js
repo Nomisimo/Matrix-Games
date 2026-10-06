@@ -88,11 +88,11 @@ export class PongRunde {
     if (ball.x > 47) { this.scoreLeft++; this.framesSincePoint = 0; this.ton("score"); return -1; }
     return null;
   }
-  render(b) {
+  render(b, hud = true) {
     feld(b);
     for (const p of [this.left, this.right]) for (let dy = 0; dy < p.h; dy++) b.set(p.x, int(p.y) + dy, PINK);
     ball(b, int(this.ball.x), int(this.ball.y));
-    scores(b, this);
+    if (hud) scores(b, this);
   }
 }
 
@@ -160,5 +160,31 @@ export function createPong({ ton = () => {} } = {}) {
         drawText(b, "PRESS SPACE", center("PRESS SPACE"), 17, PINK);
       } else game.render(b);
     },
+  };
+}
+
+/* ── Demo: Computer gegen Computer, ohne Text und Ton ──────────────────────
+   Links spielt eine zweite KI über die Tasten W/S: folgt dem Ball, wenn er kommt,
+   sonst zurück zur Mitte; ab und zu zu spät, damit Punkte fallen. */
+export function createPongDemo(rnd = Math.random) {
+  let g = new PongRunde(false), pause = 0, letzter = null, traege = 0;
+  const held = new Set();
+  return {
+    step() {
+      if (pause > 0) { if (--pause === 0) resetBall(g.ball, letzter); return; }
+      const { ball: bl, left } = g, c = left.y + left.h / 2;
+      const ziel = bl.vx < 0 ? bl.y + 1 : 12;
+      held.clear();
+      if (traege > 0) traege--;
+      else if (Math.abs(ziel - c) > 1.2) held.add(ziel < c ? "KeyW" : "KeyS");
+      // kurz vor dem Schläger manchmal einen Moment zögern
+      if (bl.vx < 0 && bl.x < 20 && bl.x > 19 && rnd() < 0.25) traege = 12 + Math.floor(rnd() * 14);
+      const s = g.update(held);
+      if (s != null) {
+        letzter = s; pause = 50;
+        if (g.scoreLeft + g.scoreRight > 50) g = new PongRunde(false);
+      }
+    },
+    render(b) { g.render(b, false); },
   };
 }

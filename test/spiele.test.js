@@ -2,8 +2,9 @@ import { CHANGELOG, compareVersions, neuesteVersion } from "../src/shared/versio
 import pkg from "../package.json" with { type: "json" };
 import test from "node:test";
 import assert from "node:assert/strict";
-import { SPIELE, Bild } from "../src/shared/spiele/index.js";
-import { SnakeRunde, TICK_RATES } from "../src/shared/spiele/snake.js";
+import { SPIELE, Bild, LEERLAUF } from "../src/shared/spiele/index.js";
+import { createMarioDemo } from "../src/shared/spiele/mario/demo.js";
+import { SnakeRunde, TICK_RATES, snakeZug } from "../src/shared/spiele/snake.js";
 import { PongRunde, WINNING_SCORE } from "../src/shared/spiele/pong.js";
 import { MarioWelt, Goomba, Koopa, GROUND_Y, MARIO_SMALL_H, TILE, weltName } from "../src/shared/spiele/mario/welt.js";
 import { genColumn, POLE_COL, TEMPLATE_W } from "../src/shared/spiele/mario/level.js";
@@ -232,4 +233,37 @@ test("Versionen: Betas vor der fertigen Version, neueste aus der Release-Liste",
   const n = neuesteVersion([{ tag_name: "v1.0.0-beta.1" }, { tag_name: "v1.0.0-beta.3", draft: true }, { tag_name: "v1.0.0-beta.2" }]);
   assert.equal(n.tag_name, "v1.0.0-beta.2");
   assert.ok(CHANGELOG[pkg.version], "Changelog-Eintrag für die Version in package.json fehlt");
+});
+
+/* ── Demo als Startbild ─────────────────────────────────────────────────── */
+test("Demo: jedes Spiel startet als Demo, Enter startet, Esc und Leerlauf führen zurück", () => {
+  for (const def of SPIELE) {
+    const g = def.create();
+    assert.equal(g.state, "demo", def.id);
+    const b = new Bild();
+    for (let i = 0; i < 600; i++) { g.step(new Set()); g.render(b); }
+    assert.ok(b.px.some((v) => v > 0), `${def.id}: Demo zeichnet etwas`);
+    g.key("Enter");
+    assert.notEqual(g.state, "demo", def.id);
+    g.key("Escape");
+    assert.equal(g.state, "demo", def.id);
+    g.key("Enter");
+    for (let i = 0; i <= LEERLAUF; i++) g.step(new Set());
+    assert.equal(g.state, "demo", `${def.id}: nach 30 s ohne Taste zurück`);
+  }
+});
+
+test("Demo: Snake-KI und Mario-Demo kommen voran", () => {
+  const s = new SnakeRunde(() => {}, () => 0.37);
+  let gefressen = 0;
+  for (let i = 0; i < 4000; i++) {
+    const m = snakeZug(s); if (m) s.setDir(...m);
+    const vorher = s.foodCount;
+    if (s.update(1 / 60) === "dead") break;
+    gefressen += s.foodCount - vorher;
+  }
+  assert.ok(gefressen >= 5, `nur ${gefressen} gefressen`);
+  const d = createMarioDemo();
+  for (let i = 0; i < 60 * 40; i++) d.step();
+  assert.ok(d.welt.welt > 1 || d.welt.mario.x > 400, "Mario-Demo kommt nicht voran");
 });

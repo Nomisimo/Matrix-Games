@@ -7,6 +7,8 @@ export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 
 export const CHANGELOG = {
   "1.0.0-beta.2": [
+    "Startbild: Jedes Spiel spielt sich als Demo selbst, ohne Text. Enter/Leertaste startet eine Runde; nach dem Game Over, mit Esc oder nach 30 Sekunden ohne Taste geht es zurück zur Demo",
+    "Mario: Die Kamera folgt hohen Sprüngen nach oben, Mario verschwindet nicht mehr oben aus dem Bild",
     "Tastatur: Nach einem Klick auf einen Schalter, eine Auswahlliste oder einen Knopf reagiert das Spiel weiter auf die Tasten (vorher war die Tastatur dort „gefangen“, die Leertaste schaltete z. B. sACN aus)",
     "Gleichmäßigere 60 Bilder je Sekunde für sACN und NDI, die Anzeige läuft im Takt des Bildschirms",
     "Matrix an/aus: schaltet die LED-Matrizen dunkel (sACN und NDI senden Schwarz), das Spiel läuft weiter",

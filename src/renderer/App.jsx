@@ -20,7 +20,7 @@ const laden = () => {
 };
 
 const STEP = 1000 / 60;
-const ZUSTAND = { title: "Titelbild", intro: "Weltanzeige", playing: "läuft", paused: "Pause", point_scored: "Punkt", clear: "Ziel erreicht", game_over: "Game Over" };
+const ZUSTAND = { demo: "Demo (spielt selbst)", title: "Titelbild", intro: "Weltanzeige", playing: "läuft", paused: "Pause", point_scored: "Punkt", clear: "Ziel erreicht", game_over: "Game Over" };
 // Tasten, die im Spiel nicht scrollen oder Knöpfe auslösen sollen
 const SPIELTASTEN = new Set(["Space", "Enter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Escape"]);
 // Nur Felder, in die man tippt, behalten die Tastatur. Schalter, Knöpfe und Auswahllisten geben sie
@@ -85,7 +85,7 @@ export default function App() {
   const [version, setVersion] = useState("");
   const [interfaces, setInterfaces] = useState([]);
   const [status, setStatus] = useState(null);
-  const [zustand, setZustand] = useState("title");
+  const [zustand, setZustand] = useState("demo");
   const [tippt, setTippt] = useState(false);
   const [pads, setPads] = useState(0);
   const [update, setUpdate] = useState(null);
@@ -94,7 +94,7 @@ export default function App() {
   const fensterOffen = useRef(false);
   fensterOffen.current = changelog;
   const canvasRef = useRef(null), matrixRef = useRef(null);
-  const gameRef = useRef(null), tonRef = useRef(null), held = useRef(new Set()), zustandRef = useRef("title");
+  const gameRef = useRef(null), tonRef = useRef(null), held = useRef(new Set()), zustandRef = useRef("demo");
   const ausgabeAn = (cfg.sacn.on || cfg.ndi.on) && isElectron;
   const ausgabeRef = useRef(ausgabeAn), schwarzRef = useRef(cfg.schwarz), spielRef = useRef(cfg.spiel);
   ausgabeRef.current = ausgabeAn;
@@ -260,7 +260,7 @@ export default function App() {
           title={cfg.schwarz ? "Bild wieder auf die Matrix geben" : "Matrix dunkel schalten: sACN und NDI senden Schwarz, das Spiel läuft weiter"}>
           <Power size={14} /> {cfg.schwarz ? "Matrix aus" : "Matrix an"}</button>
         <button style={S.ghostBtn} onClick={() => set("ton", !cfg.ton)} title={cfg.ton ? "Ton aus" : "Ton an"}>{cfg.ton ? <Volume2 size={14} /> : <VolumeX size={14} />} Ton</button>
-        <button style={S.ghostBtn} onClick={neu} title="Spiel neu starten (zurück zum Titelbild)"><RotateCcw size={14} /> Neu</button>
+        <button style={S.ghostBtn} onClick={neu} title="Runde beenden, zurück zur Demo"><RotateCcw size={14} /> Demo</button>
         <div style={{ display: "inline-flex", border: `1px solid ${LINE}`, borderRadius: 6, overflow: "hidden" }} title="Erscheinungsbild">
           {THEMES.map(([k, l, Ic]) => (
             <button key={k} onClick={() => k !== theme && setTheme(k)} title={l}

@@ -7,6 +7,7 @@ A collection of matrix-themed LED games for two 24×24 LED matrices (48×24 canv
 Snake, Pong and Mario Jump in one app, built with the same architecture and design as the [Netzwerkplaner](https://github.com/Nomisimo/Netzwerkplaner) (Electron, React, esbuild), with a green accent colour.
 
 - Pick the game in the top bar; keys are listed under the game.
+- **Demo / start screen:** every game opens as a text-free demo that plays itself. Enter or Space starts a round; after game over, on Esc, or after 30 s without input it returns to the demo.
 - **sACN (E1.31):** start universe per matrix (default 29 and 33), pixels per universe (default 144 = 9 tiles of 4×4), network card to send from. Same tile mapping as `matrix-snake/sacn_output.py`.
 - **NDI:** 480×240 BGRA stream at 60 fps (every pixel 10×10). Needs the [NDI Runtime](https://ndi.video/tools/); it is loaded with `koffi`, the same way the Python version uses ctypes.
 - **Live view:** both matrices drawn exactly as the frame goes out on the network.

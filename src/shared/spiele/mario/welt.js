@@ -402,7 +402,8 @@ const hits = (a, e) => { const h = e.hitbox || e; return overlap(a.x, a.y, a.w, 
 // Punkte für mehrere Gegner hintereinander ohne Landen (wie im Original)
 const COMBO = [100, 200, 400, 500, 800, 1000, 2000, 4000, 5000, 8000];
 const POLE_X = POLE_COL * TILE + 1, DOOR_X = (CASTLE_COL + 1) * TILE + 2;
-const CAM_MAX = (CASTLE_COL + 4) * TILE + 2 - W;   // am Ende stehen Mast und Burg im Bild
+const CAM_MAX = (CASTLE_COL + 4) * TILE + 2 - W;
+const CAM_Y_MIN = -14;   // am Ende stehen Mast und Burg im Bild
 export const weltName = (n) => `${1 + fdiv(n - 1, 4)}-${((n - 1) % 4) + 1}`;
 
 export class MarioWelt {
@@ -556,7 +557,10 @@ export class MarioWelt {
         }
       }
       if (m.dead || !hits(m, e)) continue;
-      if (m.starTimer > 0) { e.knock(); this.addScore(200); this.ton("kick"); continue; }
+      // Stern, und in der Demo: Gegner fliegen weg statt Mario zu treffen
+      if (m.starTimer > 0 || (this.demo && !(!(e instanceof Piranha) && !m.wasOnGround && m.prevVy >= 0 && m.y + m.h <= e.y + 4))) {
+        e.knock(); this.addScore(200); this.ton("kick"); continue;
+      }
       // Draufspringen: Mario fällt und landet auf der Oberseite (nicht bei Pflanzen)
       if (!(e instanceof Piranha) && !m.wasOnGround && m.prevVy >= 0 && m.y + m.h <= e.y + 4) {
         e.stomp(m.x);
@@ -595,7 +599,8 @@ export class MarioWelt {
     const ty = int(m.y) - 3;
     if (ty < this.cameraY) this.cameraY = ty;
     else if (this.cameraY < 0) this.cameraY = Math.min(0, this.cameraY + 1);
-    this.cameraY = Math.min(0, Math.max(this.cameraY, GROUND_Y - H + 1));
+    // Hohe Sprünge (von Röhren und Treppen) bleiben im Bild; beim Fallen folgt die Kamera nach unten
+    this.cameraY = Math.min(0, Math.max(this.cameraY, CAM_Y_MIN, int(m.y + m.h) - H + 1));
 
     if (m.deadDone) {
       this.lives--;
@@ -616,7 +621,7 @@ export class MarioWelt {
     Object.assign(this, { lives, score, coins });
   }
 
-  render(b, font) {
+  render(b, font, hud = true) {
     b.fill(SKY);
     const cam = this.cameraX, camY = this.cameraY;
     // Pflanzen hinter den Röhren zeichnen
@@ -637,6 +642,7 @@ export class MarioWelt {
     for (const e of this.enemies) if (!(e instanceof Piranha) || e.knocked) e.render(b, cam, camY);
     this.mario.render(b, cam, camY);
 
+    if (!hud) return;
     // HUD: Punkte links, Münzen, Herz und Leben rechts
     font.drawText(b, String(this.score).padStart(6, "0"), 0, 0, COL_SCORE);
     icon(b, 26, 0, [".X.", "XXX", "XXX", ".X."], [255, 215, 0]);
