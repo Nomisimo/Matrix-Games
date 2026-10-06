@@ -1,8 +1,36 @@
 # Matrix Games
 
-A collection of matrix-themed LED games built with Python.
+A collection of matrix-themed LED games for two 24×24 LED matrices (48×24 canvas).
 
-## Games
+## Desktop app (Electron)
+
+Snake, Pong and Mario Jump in one app, built with the same architecture and design as the [Netzwerkplaner](https://github.com/Nomisimo/Netzwerkplaner) (Electron, React, esbuild), with a green accent colour.
+
+- Pick the game in the top bar; keys are listed under the game.
+- **sACN (E1.31):** start universe per matrix (default 29 and 33), pixels per universe (default 144 = 9 tiles of 4×4), network card to send from. Same tile mapping as `matrix-snake/sacn_output.py`.
+- **NDI:** 480×240 BGRA stream at 60 fps (every pixel 10×10). Needs the [NDI Runtime](https://ndi.video/tools/); it is loaded with `koffi`, the same way the Python version uses ctypes.
+- **Live view:** both matrices drawn exactly as the frame goes out on the network.
+- Output keeps running while you switch games and while the window is minimised.
+
+```bash
+npm install
+npm start          # build the UI and start Electron
+npm test           # unit tests (game logic, sACN packets, NDI frame)
+npm run dist:mac   # .dmg (arm64 + x64)
+npm run dist:win   # .exe installer (NSIS, x64)
+```
+
+```
+src/main/          Electron main process; spiele/ausgabe.js = sACN and NDI sender
+src/preload/       IPC bridge (contextBridge)
+src/renderer/      React UI (App.jsx), sound (spiele/ton.js)
+src/shared/spiele/ game logic without UI: snake.js, pong.js, mario/
+test/              unit tests (node:test)
+```
+
+The game logic is a 1:1 port of the Python games below: with the same inputs, every frame has the same pixels.
+
+## Python games
 
 | Game | Description |
 |------|-------------|
