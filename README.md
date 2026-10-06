@@ -10,7 +10,9 @@ Snake, Pong and Mario Jump in one app, built with the same architecture and desi
 - **sACN (E1.31):** start universe per matrix (default 29 and 33), pixels per universe (default 144 = 9 tiles of 4×4), network card to send from. Same tile mapping as `matrix-snake/sacn_output.py`.
 - **NDI:** 480×240 BGRA stream at 60 fps (every pixel 10×10). Needs the [NDI Runtime](https://ndi.video/tools/); it is loaded with `koffi`, the same way the Python version uses ctypes.
 - **Live view:** both matrices drawn exactly as the frame goes out on the network.
-- Output keeps running while you switch games and while the window is minimised.
+- **Matrix an/aus:** blacks out the LED matrices (sACN and NDI keep sending, but black) while the game keeps running.
+- **Input:** keyboard (also through a KVM switch or KVM-over-IP, as long as the app window has focus) and gamepads (D-pad/stick = arrows, A = jump/start, B/X = run/fire, Start = Enter, Select = Esc; in Pong pad 1 is the left paddle, pad 2 the right one).
+- Output keeps running while you switch games and while the window is minimised. There is one sACN output and one NDI stream; it always shows the game that is selected.
 
 ```bash
 npm install
@@ -28,7 +30,7 @@ src/shared/spiele/ game logic without UI: snake.js, pong.js, mario/
 test/              unit tests (node:test)
 ```
 
-The game logic is a 1:1 port of the Python games below: with the same inputs, every frame has the same pixels.
+Snake and Pong are 1:1 ports of the Python games below: with the same inputs, every frame has the same pixels. Mario Jump started as a port and has since been extended: a flagpole and castle at the end of the course, worlds that get faster with more enemies, piranha plants, paratroopas, kickable shells, fireballs, coin, star and 1-up blocks, and a redesigned Mario.
 
 ## Python games
 

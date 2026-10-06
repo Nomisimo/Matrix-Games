@@ -4,13 +4,13 @@ import { SPIELE, Bild, W, H } from "../shared/spiele/index.js";
 import { api, isElectron } from "./api.js";
 import { createTon } from "./spiele/ton.js";
 import { Toggle, Dot, Card, Table, td, Hint } from "./ui.jsx";
-import { Volume2, VolumeX, RotateCcw, RefreshCw, TriangleAlert, Gamepad2, Sun, Moon, Monitor } from "lucide-react";
+import { Volume2, VolumeX, RotateCcw, RefreshCw, TriangleAlert, Gamepad2, Sun, Moon, Monitor, Power, Keyboard } from "lucide-react";
 import APP_ICON_SVG from "../../assets/app-icon/icon.svg";
 const APP_ICON = `data:image/svg+xml;utf8,${encodeURIComponent(APP_ICON_SVG)}`;
 
 const LS = "matrixgames_einstellungen";
 // Vorgaben wie im Snake-Original auf der echten Matrix (Universe 29 und 33, 144 Pixel je Universe)
-const STANDARD = { spiel: "snake", ton: true, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games" } };
+const STANDARD = { spiel: "snake", ton: true, schwarz: false, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games" } };
 const laden = () => {
   try {
     const v = JSON.parse(localStorage.getItem(LS) || "null");
@@ -19,10 +19,40 @@ const laden = () => {
 };
 
 const STEP = 1000 / 60;
-const ZUSTAND = { title: "Titelbild", playing: "läuft", paused: "Pause", point_scored: "Punkt", game_over: "Game Over" };
+const ZUSTAND = { title: "Titelbild", intro: "Weltanzeige", playing: "läuft", paused: "Pause", point_scored: "Punkt", clear: "Ziel erreicht", game_over: "Game Over" };
 // Tasten, die im Spiel nicht scrollen oder Knöpfe auslösen sollen
 const SPIELTASTEN = new Set(["Space", "Enter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Escape"]);
-const istEingabe = (el) => el && (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) || el.isContentEditable);
+// Nur Felder, in die man tippt, behalten die Tastatur. Schalter, Knöpfe und Auswahllisten geben sie
+// beim nächsten Tastendruck an das Spiel zurück (sonst schaltete die Leertaste z. B. sACN aus).
+const TIPPFELD = new Set(["text", "number", "search", "email", "url", "password"]);
+const istEingabe = (el) => el && ((el.tagName === "INPUT" && TIPPFELD.has(el.type)) || el.tagName === "TEXTAREA" || el.isContentEditable);
+const SCHWARZ = new Uint8Array(W * H * 3);
+
+/* Gamepads (Standard-Belegung): Steuerkreuz oder linker Stick = Pfeile, A = Leertaste,
+   B/X = Shift (Rennen, Feuer), Start = Enter, Select = Esc. Bei Pong steuert Pad 1 den linken
+   Schläger (W/S) und Pad 2 den rechten (↑/↓). */
+function padTasten(spiel) {
+  const out = new Set();
+  let pads = [];
+  try { pads = [...(navigator.getGamepads?.() || [])].filter(Boolean); } catch { return out; }
+  pads.forEach((p, i) => {
+    const b = (n) => !!p.buttons[n]?.pressed, ax = (n) => p.axes[n] || 0;
+    const hoch = b(12) || ax(1) < -0.5, runter = b(13) || ax(1) > 0.5;
+    const links = b(14) || ax(0) < -0.5, rechts = b(15) || ax(0) > 0.5;
+    if (spiel === "pong") {
+      if (i === 0) { if (hoch) out.add("KeyW"); if (runter) out.add("KeyS"); }
+      else { if (hoch) out.add("ArrowUp"); if (runter) out.add("ArrowDown"); }
+    } else {
+      if (hoch) out.add("ArrowUp"); if (runter) out.add("ArrowDown");
+    }
+    if (links) out.add("ArrowLeft"); if (rechts) out.add("ArrowRight");
+    if (b(0)) out.add("Space");
+    if (b(1) || b(2)) out.add("ShiftLeft");
+    if (b(9)) out.add("Enter");
+    if (b(8)) out.add("Escape");
+  });
+  return out;
+}
 const anzahlUniverses = (fpu) => Math.ceil(576 / Math.max(1, Math.min(170, +fpu || 144)));
 const THEMES = [["system", "wie das System", Monitor], ["hell", "Hell", Sun], ["dunkel", "Dunkel", Moon]];
 
@@ -55,11 +85,15 @@ export default function App() {
   const [interfaces, setInterfaces] = useState([]);
   const [status, setStatus] = useState(null);
   const [zustand, setZustand] = useState("title");
+  const [tippt, setTippt] = useState(false);
+  const [pads, setPads] = useState(0);
   const canvasRef = useRef(null), matrixRef = useRef(null);
   const gameRef = useRef(null), tonRef = useRef(null), held = useRef(new Set()), zustandRef = useRef("title");
   const ausgabeAn = (cfg.sacn.on || cfg.ndi.on) && isElectron;
-  const ausgabeRef = useRef(ausgabeAn);
+  const ausgabeRef = useRef(ausgabeAn), schwarzRef = useRef(cfg.schwarz), spielRef = useRef(cfg.spiel);
   ausgabeRef.current = ausgabeAn;
+  schwarzRef.current = cfg.schwarz;
+  spielRef.current = cfg.spiel;
 
   useEffect(() => { try { localStorage.setItem(LS, JSON.stringify(cfg)); } catch {} }, [cfg]);
   useEffect(() => { api.appVersion().then(setVersion); }, []);
@@ -88,44 +122,78 @@ export default function App() {
   }, [cfg.spiel]);
   useEffect(() => { neu(); }, [neu]);
 
-  // Spielschleife: feste 60 Schritte je Sekunde. setInterval statt requestAnimationFrame,
-  // damit sACN/NDI auch bei minimiertem Fenster weiterlaufen (der Hauptprozess schaltet die Drosselung ab).
+  // Spielschleife: feste 60 Schritte je Sekunde per Timer, damit sACN/NDI gleichmäßig senden, auch bei
+  // minimiertem Fenster (der Hauptprozess schaltet dafür die Drosselung ab). Gezeichnet wird getrennt
+  // davon im Takt des Bildschirms (requestAnimationFrame), damit die Anzeige nicht ruckelt.
   useEffect(() => {
     const bild = new Bild();
-    let last = performance.now(), acc = 0, n = 0;
-    const id = setInterval(() => {
+    let last = performance.now(), acc = 0, raf = 0, neu = false, n = 0, padVorher = new Set(), padZahl = 0;
+    const tick = () => {
       const now = performance.now();
       acc = Math.min(acc + now - last, STEP * 5);
       last = now;
       const g = gameRef.current;
       if (!g) return;
+      // Gamepad: neu gedrückte Tasten wie Tastendrücke melden, gehaltene mitgeben
+      const pad = padTasten(spielRef.current);
+      for (const c of pad) if (!padVorher.has(c)) g.key(c);
+      padVorher = pad;
+      let gehalten = held.current;
+      if (pad.size) { gehalten = new Set(held.current); for (const c of pad) gehalten.add(c); }
+      // Der Timer tickt alle 4 ms: knapp vor der Zeit zählt schon, sonst schwankt der Abstand zwischen 16 und 20 ms
       let schritte = 0;
-      while (acc >= STEP) { g.step(held.current); acc -= STEP; schritte++; }
+      while (acc >= STEP - 2 && schritte < 5) { g.step(gehalten); acc -= STEP; schritte++; }
       if (!schritte) return;
       g.render(bild);
+      if (ausgabeRef.current) api.frame(schwarzRef.current ? SCHWARZ : bild.px);
+      neu = true;
+      if (g.state !== zustandRef.current) { zustandRef.current = g.state; setZustand(g.state); }
+    };
+    const zeichne = () => {
+      raf = requestAnimationFrame(zeichne);
+      if (!neu) return;
+      neu = false;
       const cv = canvasRef.current;
       if (cv) cv.getContext("2d").putImageData(new ImageData(rgba(bild.px), W, H), 0, 0);
-      if (matrixRef.current && (n++ & 1) === 0) zeichneMatrix(matrixRef.current, bild.px);
-      if (ausgabeRef.current) api.frame(bild.px);
-      if (g.state !== zustandRef.current) { zustandRef.current = g.state; setZustand(g.state); }
-    }, 4);
-    return () => clearInterval(id);
+      if (matrixRef.current) zeichneMatrix(matrixRef.current, schwarzRef.current ? SCHWARZ : bild.px);
+      if ((++n & 63) === 0) {
+        let z = 0;
+        try { z = [...(navigator.getGamepads?.() || [])].filter(Boolean).length; } catch {}
+        if (z !== padZahl) { padZahl = z; setPads(z); }
+      }
+    };
+    const id = setInterval(tick, 4);
+    raf = requestAnimationFrame(zeichne);
+    return () => { clearInterval(id); cancelAnimationFrame(raf); };
   }, []);
 
-  // Tastatur: nur wenn kein Eingabefeld den Fokus hat
+  // Tastatur: geht ans Spiel, außer ein Textfeld hat den Fokus (Enter oder Esc gibt sie zurück)
   useEffect(() => {
     const down = (e) => {
-      if (istEingabe(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (istEingabe(e.target)) {
+        if (e.code === "Enter" || e.code === "Escape") { e.preventDefault(); e.target.blur(); }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const el = document.activeElement;
+      if (el && el !== document.body) el.blur?.();
       if (SPIELTASTEN.has(e.code)) e.preventDefault();
       if (!e.repeat) gameRef.current?.key(e.code);
       held.current.add(e.code);
     };
-    const up = (e) => held.current.delete(e.code);
+    const up = (e) => { held.current.delete(e.code); if (e.code === "Space" && !istEingabe(e.target)) e.preventDefault(); };
     const blur = () => held.current.clear();
+    const fokus = () => setTippt(istEingabe(document.activeElement));
+    const fokusWeg = () => setTimeout(fokus, 0);
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     window.addEventListener("blur", blur);
-    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); window.removeEventListener("blur", blur); };
+    document.addEventListener("focusin", fokus);
+    document.addEventListener("focusout", fokusWeg);
+    return () => {
+      window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); window.removeEventListener("blur", blur);
+      document.removeEventListener("focusin", fokus); document.removeEventListener("focusout", fokusWeg);
+    };
   }, []);
 
   const theme = themeWahl();
@@ -134,6 +202,7 @@ export default function App() {
   const sacnSt = status?.sacn, ndiSt = status?.ndi;
   const uni = (start) => `${start}–${+start + anzahlUniverses(cfg.sacn.fpu) - 1}`;
   const sendet = ausgabeAn && ((cfg.sacn.on && sacnSt?.on && !sacnSt?.err) || (cfg.ndi.on && ndiSt?.on && !ndiSt?.err));
+  const zumSpiel = () => document.activeElement?.blur?.();
 
   return (
     <div style={S.app}>
@@ -143,8 +212,11 @@ export default function App() {
         {version && <span style={{ ...S.badge, border: `1px solid ${LINE}`, color: SUB, fontWeight: 600 }}>v{version}</span>}
         <span style={S.headerMeta}>48×24 px · zwei LED-Matrizen à 24×24</span>
         {isElectron && <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: sendet ? OK : MUTED, marginRight: 4 }}>
-          <Dot color={sendet ? OK : LINE} /> {sendet ? "sendet" : "keine Ausgabe"}
+          <Dot color={sendet ? (cfg.schwarz ? WARN : OK) : LINE} /> {sendet ? (cfg.schwarz ? "sendet schwarz" : "sendet") : "keine Ausgabe"}
         </span>}
+        <button style={cfg.schwarz ? { ...S.ghostBtn, background: WARN, color: "#fff", borderColor: WARN } : S.ghostBtn} onClick={() => set("schwarz", !cfg.schwarz)}
+          title={cfg.schwarz ? "Bild wieder auf die Matrix geben" : "Matrix dunkel schalten: sACN und NDI senden Schwarz, das Spiel läuft weiter"}>
+          <Power size={14} /> {cfg.schwarz ? "Matrix aus" : "Matrix an"}</button>
         <button style={S.ghostBtn} onClick={() => set("ton", !cfg.ton)} title={cfg.ton ? "Ton aus" : "Ton an"}>{cfg.ton ? <Volume2 size={14} /> : <VolumeX size={14} />} Ton</button>
         <button style={S.ghostBtn} onClick={neu} title="Spiel neu starten (zurück zum Titelbild)"><RotateCcw size={14} /> Neu</button>
         <div style={{ display: "inline-flex", border: `1px solid ${LINE}`, borderRadius: 6, overflow: "hidden" }} title="Erscheinungsbild">
@@ -167,11 +239,13 @@ export default function App() {
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: 20, alignItems: "start" }}>
           <div>
             <div style={{ ...S.section, padding: 14 }}>
-              <div style={{ background: "#000", borderRadius: 6, overflow: "hidden", border: `2px solid ${ACCENT}` }}>
+              <div onMouseDown={zumSpiel} style={{ background: "#000", borderRadius: 6, overflow: "hidden", border: `2px solid ${ACCENT}` }}>
                 <canvas ref={canvasRef} width={W} height={H} style={{ display: "block", width: "100%", aspectRatio: `${W} / ${H}`, imageRendering: "pixelated" }} />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, fontSize: 12, color: SUB, flexWrap: "wrap" }}>
                 <Gamepad2 size={14} color={ACCENT} /> {def.name} · {W}×{H} px · 60 fps
+                {pads > 0 && <span style={{ color: OK }}>· {pads === 1 ? "1 Gamepad" : `${pads} Gamepads`}</span>}
+                {tippt && <span style={{ color: WARN, display: "inline-flex", alignItems: "center", gap: 4 }}><Keyboard size={13} /> Tastatur im Eingabefeld: Enter oder Klick aufs Spiel</span>}
                 <span style={{ flex: 1 }} />
                 <span>Zustand: <b style={{ color: TEXT2 }}>{ZUSTAND[zustand] || zustand}</b></span>
               </div>
@@ -210,7 +284,7 @@ export default function App() {
 
               <Toggle checked={cfg.ndi.on} disabled={!isElectron} onChange={(v) => set("ndi", { on: v })} label="NDI-Stream senden" />
               <label style={{ ...S.field, margin: "10px 0 4px" }}><span style={S.fieldLabel}>Name des NDI-Streams</span>
-                <input style={S.inputSm} value={cfg.ndi.name} onChange={(e) => set("ndi", { name: e.target.value })} /></label>
+                <NdiName value={cfg.ndi.name} onChange={(name) => set("ndi", { name })} /></label>
               <span className="sp-norm-hint">480×240 px BGRA, 60 fps (jedes Pixel 10×10). Braucht die NDI Runtime (ndi.video/tools).</span>
 
               {ausgabeAn && (
@@ -229,7 +303,7 @@ export default function App() {
                 <span>Matrix 1{cfg.sacn.on ? ` · U ${uni(cfg.sacn.u1)}` : ""}</span>
                 <span>Matrix 2{cfg.sacn.on ? ` · U ${uni(cfg.sacn.u2)}` : ""}</span>
               </div>
-              <Hint>So sieht das Bild auf den Matrizen aus: genau dieser Stand geht per sACN und NDI hinaus.</Hint>
+              <Hint>So sieht das Bild auf den Matrizen aus: genau dieser Stand geht per sACN und NDI hinaus.{cfg.schwarz ? " Gerade dunkel geschaltet." : ""}</Hint>
             </div>
           </div>
         </div>
@@ -239,6 +313,14 @@ export default function App() {
       </main></div>
     </div>
   );
+}
+
+// Der NDI-Name gilt erst beim Verlassen des Felds (oder Enter): sonst entstünde je Buchstabe ein neuer Stream
+function NdiName({ value, onChange }) {
+  const [v, setV] = useState(value);
+  useEffect(() => setV(value), [value]);
+  const fertig = () => { const n = v.trim() || "Matrix Games"; setV(n); if (n !== value) onChange(n); };
+  return <input style={S.inputSm} value={v} onChange={(e) => setV(e.target.value)} onBlur={fertig} />;
 }
 
 const Zeile = ({ ok, text }) => (

@@ -12,5 +12,5 @@ export const SPIELE = [
   { id: "pong", name: "Pong", create: createPong,
     tasten: [["← / → oder 1 / 2", "1 Spieler (gegen Computer) oder 2 Spieler"], ["Leertaste / Enter", "Start"], ["W / S", "linker Schläger"], ["↑ / ↓", "rechter Schläger (2 Spieler)"]] },
   { id: "mario", name: "Mario Jump", create: createMario,
-    tasten: [["Enter / Leertaste", "Start"], ["← / → oder A / D", "Laufen"], ["Leertaste / ↑ / W", "Springen (halten = höher)"], ["Shift / Z", "Rennen"], ["↓ / S", "Ducken (groß)"], ["Esc", "zum Titel"]] },
+    tasten: [["Enter / Leertaste", "Start"], ["← / → oder A / D", "Laufen"], ["Leertaste / ↑ / W", "Springen (halten = höher)"], ["Shift / Z / X", "Rennen; als Feuer-Mario Feuerball werfen"], ["↓ / S", "Ducken (groß)"], ["Esc", "zum Titel"]] },
 ];

@@ -1,6 +1,6 @@
 {
   "name": "matrix-games",
-  "version": "1.0.0-beta.1",
+  "version": "1.0.0-beta.2",
   "private": true,
   "description": "Snake, Pong und Mario Jump für zwei LED-Matrizen (48×24) mit sACN- und NDI-Ausgabe",
   "author": "Momo",

@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { SPIELE, Bild } from "../src/shared/spiele/index.js";
 import { SnakeRunde, TICK_RATES } from "../src/shared/spiele/snake.js";
 import { PongRunde, WINNING_SCORE } from "../src/shared/spiele/pong.js";
-import { MarioWelt, GROUND_Y, MARIO_SMALL_H } from "../src/shared/spiele/mario/welt.js";
-import { genColumn } from "../src/shared/spiele/mario/level.js";
+import { MarioWelt, Goomba, Koopa, GROUND_Y, MARIO_SMALL_H, TILE, weltName } from "../src/shared/spiele/mario/welt.js";
+import { genColumn, POLE_COL, TEMPLATE_W } from "../src/shared/spiele/mario/level.js";
 import { schrift } from "../src/shared/spiele/pixel.js";
 import ausgabe from "../src/main/spiele/ausgabe.js";
 
@@ -101,17 +101,75 @@ test("Mario steht auf dem Boden und springt", () => {
   assert.ok(w.mario.vy < 0);
 });
 
-test("Mario: ?-Block von unten gibt einen Pilz", () => {
+test("Mario: ?-Blöcke geben Münzen, besondere einen Pilz", () => {
   const w = new MarioWelt();
   w.activateBlock(13, 2);
   assert.equal(w.getTile(13, 2), "H");
-  assert.equal(w.items[0].kind, "mushroom");
+  assert.equal(w.items[0].kind, "coin");
+  assert.equal(w.coins, 1);
+  w.activateBlock(17, 2);
+  assert.equal(w.items.at(-1).kind, "mushroom");
 });
 
-test("Mario-Level wiederholt sich ab Spalte 28", () => {
-  assert.deepEqual(genColumn(28), genColumn(28 + 168));
+test("Mario-Level: Grube, Gegner, Mast und Burg, danach nur Boden", () => {
   assert.equal(genColumn(66)[0][5], " ");      // Grube
-  assert.equal(genColumn(9)[1], "goomba");
+  assert.equal(genColumn(20)[1], "goomba");
+  assert.equal(genColumn(POLE_COL)[0][4], "F");
+  assert.equal(genColumn(POLE_COL)[0][2], "|");
+  assert.deepEqual(genColumn(250)[0], [" ", " ", " ", " ", " ", "G"]);
+  assert.equal(genColumn(50, 1)[1], null);     // Zusatzgegner erst ab Welt 2
+  assert.equal(genColumn(50, 2)[1], "goomba");
+});
+
+const KEINE = { left: false, right: false, jump: false, run: false, duck: false };
+
+test("Mario bleibt links im Bild", () => {
+  const w = new MarioWelt();
+  w.cameraX = 40;
+  w.mario.x = 42;
+  for (let i = 0; i < 30; i++) w.update({ ...KEINE, left: true });
+  assert.ok(w.mario.x >= w.cameraX);
+});
+
+test("Mario: Feuerball wirft einen Gumba um", () => {
+  const w = new MarioWelt();
+  w.enemies = [];
+  w.mario.state = "fire"; w.mario.applySize();
+  for (let i = 0; i < 5; i++) w.update(KEINE);
+  const g = new Goomba(w.mario.x + 14, GROUND_Y - 4);
+  w.enemies.push(g);
+  w.update({ ...KEINE, run: true });
+  assert.equal(w.items.filter((i) => i.kind === "fireball").length, 1);
+  for (let i = 0; i < 30; i++) w.update(KEINE);
+  assert.ok(g.knocked && !g.alive);
+});
+
+test("Mario: Panzer anhalten und wegkicken", () => {
+  const k = new Koopa(40, GROUND_Y - 6);
+  k.stomp(30);
+  assert.ok(k.inShell && !k.shellMoving);
+  k.shellKickDelay = 0;
+  assert.ok(k.kick(30));
+  assert.ok(k.shellMoving && k.vx > 0);
+  k.stomp(30);
+  assert.ok(!k.shellMoving);
+});
+
+test("Mario: am Mast ist die Welt geschafft, danach kommt Welt 1-2", () => {
+  const w = new MarioWelt();
+  w.enemies = [];
+  w.ensureGenerated(TEMPLATE_W);
+  w.mario.x = POLE_COL * TILE - 10; w.mario.y = 0; w.cameraX = 700;
+  let n = 0;
+  while (!w.courseClear && n++ < 2000) w.update({ ...KEINE, right: true });
+  assert.ok(w.courseClear, "Ziel nicht erreicht");
+  assert.ok(w.score >= 100);
+  const score = w.score;
+  w.naechsteWelt();
+  assert.equal(w.welt, 2);
+  assert.equal(weltName(w.welt), "1-2");
+  assert.equal(w.score, score);
+  assert.ok(!w.courseClear && w.mario.x < 40);
 });
 
 /* ── Ausgabe: sACN wie sacn_output.py ───────────────────────────────────── */
