@@ -1,0 +1,67 @@
+# Baut die Mac-App (Apple Silicon und Intel) und veröffentlicht sie als GitHub-Release.
+# Auslöser: Tag „v…“ pushen (z. B. git tag v1.0.0-beta.1 && git push origin v1.0.0-beta.1)
+# oder unter Actions → Release → „Run workflow“. Tags mit Bindestrich werden Vorabversionen.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple Silicon
+            os: macos-latest
+            args: --mac --arm64
+          # Intel-DMG auf einem Intel-Runner bauen, dort entsteht ein HFS+-Image
+          - name: macOS Intel
+            os: macos-15-intel
+            args: --mac --x64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Installer bauen
+        run: npx electron-builder ${{ matrix.args }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ strategy.job-index }}
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  release:
+    name: GitHub-Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artefakte
+          merge-multiple: true
+      - name: Veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="v$(node -p "require('./package.json').version")"
+          if [ "${{ github.ref_type }}" = "tag" ]; then TAG="${{ github.ref_name }}"; fi
+          PRE=""; [[ "$TAG" == *-* ]] && PRE="--prerelease"
+          gh release create "$TAG" artefakte/*.dmg --title "Matrix Games ${TAG#v}" --target "${{ github.sha }}" $PRE \
+            --notes "Mac-App (Apple Silicon und Intel). Nicht signiert: beim ersten Start Rechtsklick auf die App → Öffnen."
