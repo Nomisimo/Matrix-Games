@@ -56,6 +56,7 @@ export class SnakeRunde {
   setDir(dx, dy) { if (dx !== -this.dir[0] || dy !== -this.dir[1]) this.pending = [dx, dy]; }
   uiCells() {
     const cells = new Set();
+    if (this.ohneHud) return cells;      // Demo: ohne Anzeige darf das Futter überall liegen
     const sw = textWidth(String(this.score));
     for (let y = 1; y < 6; y++) for (let x = 2; x < 2 + sw; x++) cells.add(k(x, y));
     const lw = textWidth("L" + (this.level + 1));
@@ -114,8 +115,11 @@ export class SnakeRunde {
 }
 
 /* ── Demo: die Schlange spielt selbst ──────────────────────────────────────
-   Kürzester Weg zum Futter (Breitensuche), aber nur, wenn danach genug Platz bleibt;
-   sonst in Richtung des größten freien Bereichs. Ohne Text, ohne Ton. */
+   Zwei Fahrweisen, über „Können“ (0–100 %) einstellbar:
+   - gering: kürzester Weg zum Futter (Breitensuche) mit Platzprüfung und Fehlern
+   - hoch:   fester Rundweg über alle Felder (Hamilton-Kreis) mit Abkürzungen;
+             damit kann die Schlange das ganze Feld füllen, ohne sich einzusperren.
+   Ohne Text, ohne Ton. */
 const NACHBARN = [[1, 0], [0, 1], [-1, 0], [0, -1]];
 const frei = (x, y, occ) => X1 <= x && x <= X2 && Y1 <= y && y <= Y2 && !occ.has(k(x, y));
 function flaeche(sx, sy, occ, max) {
@@ -129,6 +133,56 @@ function flaeche(sx, sy, occ, max) {
   }
   return seen.size;
 }
+
+/* Rundweg über alle Felder: Spalte X1 ist der Rückweg, die übrigen Spalten werden
+   zeilenweise im Zickzack abgefahren. Geht auf, weil das Feld 22 Zeilen (gerade) hat. */
+export const FELDER = (X2 - X1 + 1) * (Y2 - Y1 + 1);
+function rundweg() {
+  const pfad = [];
+  for (let y = Y1; y <= Y2; y++) {
+    if ((y - Y1) % 2 === 0) for (let x = X1 + 1; x <= X2; x++) pfad.push([x, y]);
+    else for (let x = X2; x > X1; x--) pfad.push([x, y]);
+  }
+  for (let y = Y2; y >= Y1; y--) pfad.push([X1, y]);
+  const nr = new Map();
+  pfad.forEach(([x, y], i) => nr.set(k(x, y), i));
+  return nr;
+}
+export const RUNDWEG = rundweg();
+const abstand = (a, b) => (b - a + FELDER) % FELDER;
+
+// Zug entlang des Rundwegs, mit Abkürzung zum Futter, solange der Schwanz nicht überholt wird
+export function hamiltonZug(g, mut = 1) {
+  const [hx, hy] = g.head, nr = RUNDWEG.get(k(hx, hy));
+  if (nr === undefined) return null;                       // Kopf außerhalb: nichts zu tun
+  const occ = g.occupancy();
+  const [tx, ty] = g.body[g.body.length - 1];
+  if (g.growth <= 0) occ.delete(k(tx, ty));
+  const bisSchwanz = abstand(nr, RUNDWEG.get(k(tx, ty)));
+  const bisFutter = g.food ? abstand(nr, RUNDWEG.get(k(g.food[0], g.food[1]))) : 0;
+  const leer = FELDER - g.body.length;
+  // Abkürzen nur, solange der Schwanz mit Sicherheitsabstand voraus bleibt (die Schlange
+  // wächst je Futter um 3 Felder, so lange rückt der Schwanz nicht nach). „mut“ kommt aus dem Können.
+  const sicher = g.growth + 4;
+  const grenze = leer > FELDER * 0.2 ? 1 + Math.floor(Math.max(0, bisSchwanz - sicher - 1) * mut) : 0;
+  let best = null, bestWeit = -1;
+  for (const [dx, dy] of NACHBARN) {
+    const nx = hx + dx, ny = hy + dy;
+    if (dx === -g.dir[0] && dy === -g.dir[1]) continue;
+    if (!frei(nx, ny, occ)) continue;
+    const weit = abstand(nr, RUNDWEG.get(k(nx, ny)));
+    if (weit === 0) continue;
+    if (weit > 1) {                                        // Abkürzung
+      if (weit > grenze) continue;
+      if (g.food && weit > bisFutter) continue;            // nicht am Futter vorbei
+      if (weit >= bisSchwanz - sicher) continue;           // nicht am Schwanz vorbei
+    }
+    if (weit > bestWeit) { bestWeit = weit; best = [dx, dy]; }
+  }
+  return best;
+}
+
+// Kürzester Weg zum Futter, aber nur wenn danach genug Platz bleibt
 export function snakeZug(g) {
   const occ = g.occupancy();
   const [tx, ty] = g.body[g.body.length - 1];
@@ -158,20 +212,48 @@ export function snakeZug(g) {
   return moves.map((m) => [m, platz(...m)]).sort((a, b) => b[1] - a[1])[0][0];
 }
 
-export function createSnakeDemo() {
-  let g = new SnakeRunde(), tot = 0;
-  return {
-    step() {
-      if (tot > 0) { if (--tot === 0) g = new SnakeRunde(); return; }
-      const m = snakeZug(g);
-      if (m) g.setDir(...m);
-      if (g.update(DT) === "dead") tot = 60;
-    },
-    render(b) { g.render(b, false); },
-  };
+/* Können 0–1: ab 0,8 fährt die Schlange den Rundweg (füllt das Feld), darunter den
+   kurzen Weg zum Futter und macht umso öfter einen zufälligen Fehler, je kleiner der Wert. */
+export function demoZug(g, koennen = 1, rnd = Math.random) {
+  const fehler = Math.max(0, 0.8 - koennen) * 0.25;
+  const occ = g.occupancy();
+  const [tx, ty] = g.body[g.body.length - 1];
+  if (g.growth <= 0) occ.delete(k(tx, ty));
+  const [hx, hy] = g.head;
+  const moves = NACHBARN.filter(([dx, dy]) => !(dx === -g.dir[0] && dy === -g.dir[1]) && frei(hx + dx, hy + dy, occ));
+  if (!moves.length) return null;
+  if (fehler > 0 && rnd() < fehler) return moves[Math.floor(rnd() * moves.length)];
+  if (koennen >= 0.8) {
+    const m = hamiltonZug(g, (koennen - 0.8) / 0.2);
+    if (m) return m;
+  }
+  return snakeZug(g);
 }
 
-const DECO = [[32, 10], [31, 10], [30, 10], [29, 10], [28, 10], [28, 11], [28, 12], [29, 12], [30, 12], [31, 12]];
+export function createSnakeDemo({ koennen = () => 1 } = {}) {
+  // Mit dem Können steigt auch das Tempo: bei 100 % fährt die Schlange von Anfang an schnell
+  const stufe = (kn) => Math.min(TICK_RATES.length - 1, Math.round(kn * (TICK_RATES.length - 1)));
+  const neu = (kn) => {
+    const r = Object.assign(new SnakeRunde(), { ohneHud: true });
+    r.level = stufe(kn); r.tickRate = TICK_RATES[r.level];
+    return r;
+  };
+  let g = neu(1), tot = 0;
+  return {
+    step() {
+      const kn = koennen();
+      if (tot > 0) { if (--tot === 0) g = neu(kn); return; }
+      if (g.level < stufe(kn)) { g.level = stufe(kn); g.tickRate = TICK_RATES[g.level]; }
+      const m = demoZug(g, kn);
+      if (m) g.setDir(...m);
+      if (g.update(DT) === "dead") tot = 60;
+      // Feld voll: kurz stehen lassen, dann von vorn
+      else if (!g.food && g.growth <= 0) tot = 180;
+    },
+    render(b) { g.render(b, false); },
+    get runde() { return g; },
+  };
+}
 
 export function createSnake({ ton = () => {} } = {}) {
   let state = "title", game = null, high = 0, blink = 0;

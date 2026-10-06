@@ -1,6 +1,7 @@
 /* ── Mario-Demo: Mario läuft selbst durch die Welten ───────────────────────
    Läuft nach rechts und springt vor Wänden, Gruben und Gegnern. Ohne Text und Ton,
-   Gegner können ihm nichts anhaben, Leben gehen nie aus; am Ziel geht es in die nächste Welt. */
+   Gegner können ihm nichts anhaben, Leben gehen nie aus. Mario geht (statt zu rennen) und das
+   Tempo bleibt immer gleich; am Mast geht es ohne Pause und ohne Zielbild direkt weiter. */
 import { MarioWelt, TILE } from "./welt.js";
 import { LEVEL_H } from "./level.js";
 import { int, fdiv } from "../pixel.js";
@@ -8,7 +9,7 @@ import { int, fdiv } from "../pixel.js";
 const SOLID = new Set("GH?B[]()IN");
 
 export function marioZug(w, s) {
-  const m = w.mario, keys = { left: false, right: true, jump: false, run: true, duck: false };
+  const m = w.mario, keys = { left: false, right: true, jump: false, run: false, duck: false };
   if (m.dead || w.ziel) return keys;
   const fest = (x, y) => { const c = fdiv(int(x), TILE), r = fdiv(int(y), TILE); return r >= 0 && r < LEVEL_H && SOLID.has(w.getTile(c, r)); };
   const vorn = m.x + m.w, fuss = m.y + m.h;
@@ -40,11 +41,11 @@ export function marioZug(w, s) {
 const neueWelt = () => Object.assign(new MarioWelt(), { demo: true });
 
 export function createMarioDemo() {
-  let w = neueWelt(), s = { halten: 0, stand: 0, lastX: 0, gedrueckt: false }, ziel = 0;
+  let w = neueWelt(), s = { halten: 0, stand: 0, lastX: 0, gedrueckt: false };
   return {
     step() {
-      if (w.courseClear) { if (++ziel > 60) { ziel = 0; w.naechsteWelt(); if (w.welt > 4) w = neueWelt(); else w.demo = true; } return; }
-      if (w.gameOver) w = neueWelt();
+      // Kein Rundenende: am Mast und nach einem Sturz geht es sofort weiter, immer im selben Tempo
+      if (w.neuStarten || w.gameOver) { w = neueWelt(); return; }
       w.lives = 3;
       const x = w.mario.x;
       s.stand = Math.abs(x - s.lastX) < 0.05 ? s.stand + 1 : 0;

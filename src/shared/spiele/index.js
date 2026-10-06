@@ -4,7 +4,8 @@
 
    Startbild: Jedes Spiel beginnt mit einer Demo, in der es sich selbst spielt (ohne Text,
    ohne Ton). Enter/Leertaste startet eine Runde. Zurück zur Demo geht es mit Esc, nach
-   einer Runde (Game Over) oder wenn 30 Sekunden lang keine Taste gedrückt wurde. */
+   einer Runde (Game Over) oder wenn 30 Sekunden lang keine Taste gedrückt wurde.
+   „Können“ (0–1) stellt ein, wie gut sich die Demo schlägt (Snake und Pong). */
 import { createSnake, createSnakeDemo } from "./snake.js";
 import { createPong, createPongDemo } from "./pong.js";
 import { createMario, FONT as MARIO_FONT } from "./mario/index.js";
@@ -17,9 +18,9 @@ const START = new Set(["Enter", "Space", "NumpadEnter"]);
 
 // Spiel mit Demo als Startbild. starte(spiel, code) bringt eine frische Runde direkt ins Spiel.
 export function mitDemo({ create, demo, starte, startTasten = START }) {
-  return ({ ton = () => {} } = {}) => {
-    let modus = "demo", spiel = null, d = demo(), leer = 0, ende = 0;
-    const zurDemo = () => { modus = "demo"; spiel = null; d = demo(); ton("_stop"); };
+  return ({ ton = () => {}, koennen = () => 1 } = {}) => {
+    let modus = "demo", spiel = null, d = demo({ koennen }), leer = 0, ende = 0;
+    const zurDemo = () => { modus = "demo"; spiel = null; d = demo({ koennen }); ton("_stop"); };
     return {
       get state() { return modus === "demo" ? "demo" : spiel.state; },
       get spiel() { return spiel; },

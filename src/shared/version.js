@@ -6,6 +6,11 @@ export const REPO = "Nomisimo/Matrix-Games";
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 
 export const CHANGELOG = {
+  "1.0.0-beta.3": [
+    "Demo: Mario geht statt zu rennen, das Tempo bleibt immer gleich und die Strecke läuft endlos weiter (kein Zielbild, kein Rundenende)",
+    "Demo: Snake fährt einen Rundweg über alle Felder und füllt das Feld zu 100 %, ohne sich einzusperren",
+    "Neuer Regler „Können der Demo“ (0–100 %): legt fest, wie gut sich Snake und Pong im Startbild schlagen; bei wenig Können machen sie Fehler, bei viel spielen sie fehlerfrei und schneller",
+  ],
   "1.0.0-beta.2": [
     "Startbild: Jedes Spiel spielt sich als Demo selbst, ohne Text. Enter/Leertaste startet eine Runde; nach dem Game Over, mit Esc oder nach 30 Sekunden ohne Taste geht es zurück zur Demo",
     "Mario: Die Kamera folgt hohen Sprüngen nach oben, Mario verschwindet nicht mehr oben aus dem Bild",

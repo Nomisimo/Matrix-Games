@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { SPIELE, Bild, LEERLAUF } from "../src/shared/spiele/index.js";
 import { createMarioDemo } from "../src/shared/spiele/mario/demo.js";
-import { SnakeRunde, TICK_RATES, snakeZug } from "../src/shared/spiele/snake.js";
+import { SnakeRunde, TICK_RATES, snakeZug, demoZug, FELDER } from "../src/shared/spiele/snake.js";
 import { PongRunde, WINNING_SCORE } from "../src/shared/spiele/pong.js";
 import { MarioWelt, Goomba, Koopa, GROUND_Y, MARIO_SMALL_H, TILE, weltName } from "../src/shared/spiele/mario/welt.js";
 import { genColumn, POLE_COL, TEMPLATE_W } from "../src/shared/spiele/mario/level.js";
@@ -266,4 +266,38 @@ test("Demo: Snake-KI und Mario-Demo kommen voran", () => {
   const d = createMarioDemo();
   for (let i = 0; i < 60 * 40; i++) d.step();
   assert.ok(d.welt.welt > 1 || d.welt.mario.x > 400, "Mario-Demo kommt nicht voran");
+});
+
+test("Demo-Können: Snake füllt bei 100 % das ganze Feld, bei 0 % stirbt sie früh", () => {
+  const voll = () => {
+    const g = Object.assign(new SnakeRunde(), { ohneHud: true });
+    for (let i = 0; i < 400000; i++) {
+      const m = demoZug(g, 1);
+      if (m) g.setDir(...m);
+      if (g.update(1 / 60) === "dead") return g.body.length;
+      if (!g.food && g.growth <= 0) break;
+    }
+    return g.body.length;
+  };
+  assert.equal(voll(), FELDER, "mit vollem Können muss das Feld ganz voll werden");
+  let kurz = 0, rnd = (() => { let s = 7; return () => ((s = (s * 16807) % 2147483647) / 2147483647); })();
+  const g = Object.assign(new SnakeRunde(), { ohneHud: true });
+  for (; kurz < 400000; kurz++) {
+    const m = demoZug(g, 0, rnd);
+    if (m) g.setDir(...m);
+    if (g.update(1 / 60) === "dead") break;
+  }
+  assert.ok(g.body.length < FELDER / 4, `ohne Können wurde die Schlange ${g.body.length} lang`);
+});
+
+test("Mario-Demo: gleiches Tempo, kein Rundenende", () => {
+  const d = createMarioDemo();
+  let maxTempo = 0;
+  for (let i = 0; i < 60 * 60 * 3; i++) {
+    d.step();
+    maxTempo = Math.max(maxTempo, Math.abs(d.welt.mario.vx));
+    assert.ok(!d.welt.courseClear && !d.welt.gameOver && !d.welt.ziel, "Demo darf nicht ins Zielbild laufen");
+    assert.equal(d.welt.welt, 1, "Demo-Welt soll nicht schneller werden");
+  }
+  assert.ok(maxTempo <= 0.61, `Mario läuft mit ${maxTempo} zu schnell`);
 });

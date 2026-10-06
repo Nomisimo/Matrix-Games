@@ -536,7 +536,8 @@ export class MarioWelt {
     // Mario bleibt im Bild: die Kamera fährt nur nach rechts
     if (m.x < this.cameraX) { m.x = this.cameraX; if (m.vx < 0) m.vx = 0; }
     if (m.y > H && !m.dead) m.pitDeath();
-    if (!m.dead && m.x + m.w >= POLE_COL * TILE) return this.startZiel();
+    // Demo: kein Zielbild, die Strecke beginnt einfach von vorn
+    if (!m.dead && m.x + m.w >= POLE_COL * TILE) { if (this.demo) { this.neuStarten = true; return; } return this.startZiel(); }
 
     for (const b of this.bumps) b.t--;
     this.bumps = this.bumps.filter((b) => b.t > 0);

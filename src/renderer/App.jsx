@@ -11,7 +11,7 @@ const APP_ICON = `data:image/svg+xml;utf8,${encodeURIComponent(APP_ICON_SVG)}`;
 
 const LS = "matrixgames_einstellungen";
 // Vorgaben wie im Snake-Original auf der echten Matrix (Universe 29 und 33, 144 Pixel je Universe)
-const STANDARD = { spiel: "snake", ton: true, schwarz: false, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games" } };
+const STANDARD = { spiel: "snake", ton: true, schwarz: false, koennen: 80, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games" } };
 const laden = () => {
   try {
     const v = JSON.parse(localStorage.getItem(LS) || "null");
@@ -96,9 +96,10 @@ export default function App() {
   const canvasRef = useRef(null), matrixRef = useRef(null);
   const gameRef = useRef(null), tonRef = useRef(null), held = useRef(new Set()), zustandRef = useRef("demo");
   const ausgabeAn = (cfg.sacn.on || cfg.ndi.on) && isElectron;
-  const ausgabeRef = useRef(ausgabeAn), schwarzRef = useRef(cfg.schwarz), spielRef = useRef(cfg.spiel);
+  const ausgabeRef = useRef(ausgabeAn), schwarzRef = useRef(cfg.schwarz), spielRef = useRef(cfg.spiel), koennenRef = useRef(cfg.koennen);
   ausgabeRef.current = ausgabeAn;
   schwarzRef.current = cfg.schwarz;
+  koennenRef.current = cfg.koennen;
   spielRef.current = cfg.spiel;
 
   useEffect(() => { try { localStorage.setItem(LS, JSON.stringify(cfg)); } catch {} }, [cfg]);
@@ -154,7 +155,7 @@ export default function App() {
   const neu = useCallback(() => {
     tonRef.current?.stopAlle();
     const def = SPIELE.find((s) => s.id === cfg.spiel) || SPIELE[0];
-    gameRef.current = def.create({ ton: (name) => tonRef.current?.play(def.id, name) });
+    gameRef.current = def.create({ ton: (name) => tonRef.current?.play(def.id, name), koennen: () => (koennenRef.current ?? 80) / 100 });
     held.current.clear();
     document.activeElement?.blur?.();
   }, [cfg.spiel]);
@@ -292,6 +293,25 @@ export default function App() {
                 <span>Zustand: <b style={{ color: TEXT2 }}>{ZUSTAND[zustand] || zustand}</b></span>
               </div>
             </div>
+            <Card title="Demo (Startbild)">
+              <p style={{ ...S.hint, margin: "0 0 10px" }}>
+                Jedes Spiel spielt sich selbst, bis jemand mit Enter oder der Leertaste startet. Nach dem Spiel, mit Esc
+                oder nach 30 Sekunden ohne Taste läuft wieder die Demo.
+              </p>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: TEXT2 }}>
+                <span style={{ whiteSpace: "nowrap" }}>Können der Demo</span>
+                <input type="range" min={0} max={100} step={5} value={cfg.koennen} onChange={(e) => set("koennen", +e.target.value)}
+                  style={{ flex: 1, accentColor: ACCENT, minWidth: 120 }} />
+                <b style={{ width: 38, textAlign: "right", color: ACCENT }}>{cfg.koennen} %</b>
+              </label>
+              <span className="sp-norm-hint">
+                {cfg.koennen >= 80
+                  ? "Snake fährt einen Rundweg über alle Felder und füllt das Feld ganz, Pong hält fast jeden Ball."
+                  : cfg.koennen >= 40
+                    ? "Snake nimmt den kurzen Weg zum Futter und verfährt sich ab und zu, Pong lässt öfter einen Ball durch."
+                    : "Snake macht viele Fehler und beißt sich schnell selbst, Pong verliert schnell Punkte."}
+              </span>
+            </Card>
             <Card title="Tasten">
               <Table head={["Taste", "Funktion"]}>
                 {def.tasten.map(([k, f]) => <tr key={k}><td style={td({ fontWeight: 600, whiteSpace: "nowrap" })}>{k}</td><td style={td()}>{f}</td></tr>)}

@@ -165,8 +165,8 @@ export function createPong({ ton = () => {} } = {}) {
 
 /* ── Demo: Computer gegen Computer, ohne Text und Ton ──────────────────────
    Links spielt eine zweite KI über die Tasten W/S: folgt dem Ball, wenn er kommt,
-   sonst zurück zur Mitte; ab und zu zu spät, damit Punkte fallen. */
-export function createPongDemo(rnd = Math.random) {
+   sonst zurück zur Mitte. Wie oft sie zu spät kommt, hängt vom eingestellten Können ab. */
+export function createPongDemo({ koennen = () => 1, rnd = Math.random } = {}) {
   let g = new PongRunde(false), pause = 0, letzter = null, traege = 0;
   const held = new Set();
   return {
@@ -178,7 +178,9 @@ export function createPongDemo(rnd = Math.random) {
       if (traege > 0) traege--;
       else if (Math.abs(ziel - c) > 1.2) held.add(ziel < c ? "KeyW" : "KeyS");
       // kurz vor dem Schläger manchmal einen Moment zögern
-      if (bl.vx < 0 && bl.x < 20 && bl.x > 19 && rnd() < 0.25) traege = 12 + Math.floor(rnd() * 14);
+      // Je höher das Können, desto seltener und kürzer das Zögern
+      const kn = Math.max(0, Math.min(1, koennen()));
+      if (bl.vx < 0 && bl.x < 20 && bl.x > 19 && rnd() < 0.45 * (1 - kn)) traege = 8 + Math.floor(rnd() * (6 + 20 * (1 - kn)));
       const s = g.update(held);
       if (s != null) {
         letzter = s; pause = 50;
