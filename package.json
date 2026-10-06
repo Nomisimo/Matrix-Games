@@ -14,7 +14,8 @@
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
     "dist:mac": "npm run build && electron-builder --mac --arm64 --x64",
-    "dist:win": "npm run build && electron-builder --win"
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:ci": "electron-builder --publish never"
   },
   "build": {
     "appId": "dev.matrixgames",
@@ -28,11 +29,20 @@
       "package.json"
     ],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "signAndEditExecutable": false
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "category": "public.app-category.games",
       "identity": "-",
       "hardenedRuntime": false,
@@ -41,9 +51,24 @@
         "NSLocalNetworkUsageDescription": "Matrix Games sendet das Spielbild per sACN und NDI an die LED-Matrizen im lokalen Netz."
       }
     },
-    "nsis": { "oneClick": true, "perMachine": false, "createDesktopShortcut": true },
-    "directories": { "output": "dist" },
-    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "differentialPackage": false
+    },
+    "directories": {
+      "output": "dist"
+    },
+    "artifactName": "Matrix-Games-${version}-${os}-${arch}.${ext}",
+    "publish": {
+      "provider": "github",
+      "owner": "Nomisimo",
+      "repo": "Matrix-Games"
+    },
+    "dmg": {
+      "writeUpdateInfo": false
+    }
   },
   "devDependencies": {
     "electron": "^33.4.11",
@@ -54,7 +79,12 @@
     "react-dom": "^18.3.1"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "koffi": "^2.16.3"
   },
-  "repository": { "type": "git", "url": "https://github.com/Nomisimo/Matrix-Games.git" }
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Nomisimo/Matrix-Games.git"
+  },
+  "homepage": "https://github.com/Nomisimo/Matrix-Games"
 }

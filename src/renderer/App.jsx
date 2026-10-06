@@ -3,8 +3,9 @@ import { S, ACCENT, OK, ERR, WARN, SUB, MUTED, TEXT2, INPUT, LINE, THEME_KEY, th
 import { SPIELE, Bild, W, H } from "../shared/spiele/index.js";
 import { api, isElectron } from "./api.js";
 import { createTon } from "./spiele/ton.js";
-import { Toggle, Dot, Card, Table, td, Hint } from "./ui.jsx";
-import { Volume2, VolumeX, RotateCcw, RefreshCw, TriangleAlert, Gamepad2, Sun, Moon, Monitor, Power, Keyboard } from "lucide-react";
+import { Toggle, Dot, Card, Table, td, Hint, Modal } from "./ui.jsx";
+import { CHANGELOG, compareVersions, neuesteVersion, istBeta, RELEASES_URL } from "../shared/version.js";
+import { Volume2, VolumeX, RotateCcw, RefreshCw, TriangleAlert, Gamepad2, Sun, Moon, Monitor, Power, Keyboard, ArrowUpCircle, Download } from "lucide-react";
 import APP_ICON_SVG from "../../assets/app-icon/icon.svg";
 const APP_ICON = `data:image/svg+xml;utf8,${encodeURIComponent(APP_ICON_SVG)}`;
 
@@ -87,6 +88,11 @@ export default function App() {
   const [zustand, setZustand] = useState("title");
   const [tippt, setTippt] = useState(false);
   const [pads, setPads] = useState(0);
+  const [update, setUpdate] = useState(null);
+  const [updateStatus, setUpdateStatus] = useState("");
+  const [changelog, setChangelog] = useState(false);
+  const fensterOffen = useRef(false);
+  fensterOffen.current = changelog;
   const canvasRef = useRef(null), matrixRef = useRef(null);
   const gameRef = useRef(null), tonRef = useRef(null), held = useRef(new Set()), zustandRef = useRef("title");
   const ausgabeAn = (cfg.sacn.on || cfg.ndi.on) && isElectron;
@@ -98,6 +104,38 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem(LS, JSON.stringify(cfg)); } catch {} }, [cfg]);
   useEffect(() => { api.appVersion().then(setVersion); }, []);
   const set = (k, v) => setCfg((c) => ({ ...c, [k]: typeof v === "object" ? { ...c[k], ...v } : v }));
+
+  /* ── Versionen: beim Start prüfen, ob auf GitHub eine neuere Version liegt (wie im Netzwerkplaner) ── */
+  const checkUpdate = useCallback(async (manuell = false) => {
+    if (!version || version === "dev") return;
+    if (manuell) setUpdateStatus("Suche …");
+    const list = await api.fetchReleases();
+    if (!list) { if (manuell) setUpdateStatus("GitHub nicht erreichbar."); return; }
+    // Stabile Versionen sehen nur stabile Releases, Betas sehen alles
+    const n = neuesteVersion(istBeta(version) ? list : list.filter((r) => !r.prerelease));
+    if (n && compareVersions(n.tag_name, version) > 0) { setUpdate((u) => ({ ...u, tag: n.tag_name.replace(/^v/, ""), url: n.html_url || RELEASES_URL })); setUpdateStatus((s) => (/geladen|bereit/.test(s) ? s : `Neue Version ${n.tag_name} verfügbar.`)); }
+    else if (manuell) setUpdateStatus(`Du nutzt die neueste Version (${version}).`);
+    // Windows: electron-updater lädt die neue Version im Hintergrund
+    if (manuell) api.checkForUpdates();
+  }, [version]);
+  useEffect(() => { checkUpdate(false); }, [checkUpdate]);
+  useEffect(() => api.onUpdateStatus((m) => {
+    if (m.type === "available") { setUpdate((u) => ({ url: RELEASES_URL, ...u, tag: m.version || u?.tag })); setUpdateStatus(`Version ${m.version} wird geladen …`); }
+    else if (m.type === "downloading") setUpdateStatus(`Update wird geladen … ${m.percent} %`);
+    else if (m.type === "installing-after-download") setUpdateStatus("Update wird geladen und danach automatisch installiert …");
+    else if (m.type === "downloaded") { setUpdate((u) => ({ url: RELEASES_URL, ...u, tag: m.version || u?.tag, bereit: true })); setUpdateStatus(`Version ${m.version || ""} ist bereit. „Neu starten“ installiert sie.`); }
+    else if (m.type === "mac-dmg-offen") { setUpdate((u) => ({ url: RELEASES_URL, ...u, macOffen: true })); setUpdateStatus(`Version ${m.version} ist geöffnet. Matrix Games beenden, im Finder-Fenster auf „Programme“ ziehen, „Ersetzen“ wählen und neu starten.`); setChangelog(true); }
+    else if (m.type === "error") setUpdateStatus((s) => (/verfügbar/.test(s) ? s : "Automatisches Update nicht möglich. Download-Seite nutzen."));
+  }), []);
+  // Windows: electron-updater lädt und installiert selbst. macOS: DMG in der App laden und öffnen,
+  // der Nutzer zieht die App nach „Programme“ (App nicht mit Apple-ID signiert)
+  const [autoUpdate, setAutoUpdate] = useState(false);
+  const [macUpdate, setMacUpdate] = useState(false);
+  useEffect(() => { api.checkForUpdates().then((r) => { setAutoUpdate(!!r?.auto); setMacUpdate(!!r?.mac); }).catch(() => {}); }, []);
+  const updateAusfuehren = () => {
+    if (macUpdate && update?.tag) { setChangelog(true); if (update.macOffen) return; api.macUpdateLaden(update.tag).then((r) => !r?.ok && setUpdateStatus("Download läuft schon oder ist nicht möglich. Download-Seite nutzen.")); return; }
+    return autoUpdate || update?.bereit ? api.installUpdate() : api.installUpdate(update?.url || RELEASES_URL);
+  };
 
   const ladeIfaces = () => api.netzwerkkarten().then((l) => setInterfaces(l || []));
   useEffect(() => { ladeIfaces(); }, []);
@@ -170,6 +208,7 @@ export default function App() {
   // Tastatur: geht ans Spiel, außer ein Textfeld hat den Fokus (Enter oder Esc gibt sie zurück)
   useEffect(() => {
     const down = (e) => {
+      if (fensterOffen.current) return;   // Fenster „Version und Updates“ offen
       if (istEingabe(e.target)) {
         if (e.code === "Enter" || e.code === "Escape") { e.preventDefault(); e.target.blur(); }
         return;
@@ -209,7 +248,10 @@ export default function App() {
       <header style={S.header}>
         <img src={APP_ICON} alt="" width={26} height={26} style={{ borderRadius: 6 }} />
         <span style={S.logo}>MATRIX GAMES</span>
-        {version && <span style={{ ...S.badge, border: `1px solid ${LINE}`, color: SUB, fontWeight: 600 }}>v{version}</span>}
+        {version && <button onClick={() => setChangelog(true)} title="Version und Updates" style={{ background: "none", border: `1px solid ${LINE}`, borderRadius: 10, color: SUB, fontSize: 11, padding: "1px 8px", cursor: "pointer", whiteSpace: "nowrap" }}>
+          v{version.replace(/-beta\.?\d*$/i, "")}{istBeta(version) && <span style={{ marginLeft: 5, color: "#fff", background: ACCENT, borderRadius: 6, padding: "0 5px", fontSize: 9.5, fontWeight: 700 }}>BETA {(version.match(/beta\.?(\d+)/i) || [])[1] || ""}</span>}
+        </button>}
+        {update?.tag && <button onClick={updateAusfuehren} title={autoUpdate ? "Update automatisch installieren" : macUpdate ? "Update laden und öffnen" : "Download-Seite öffnen"} style={{ background: OK + "22", border: `1px solid ${OK}`, borderRadius: 10, color: OK, fontSize: 11, padding: "1px 8px", cursor: "pointer", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 4 }}><ArrowUpCircle size={12} /> {autoUpdate || macUpdate ? `${update.tag} installieren` : `${update.tag} verfügbar`}</button>}
         <span style={S.headerMeta}>48×24 px · zwei LED-Matrizen à 24×24</span>
         {isElectron && <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: sendet ? OK : MUTED, marginRight: 4 }}>
           <Dot color={sendet ? (cfg.schwarz ? WARN : OK) : LINE} /> {sendet ? (cfg.schwarz ? "sendet schwarz" : "sendet") : "keine Ausgabe"}
@@ -311,6 +353,18 @@ export default function App() {
           sACN und NDI laufen weiter, wenn du das Spiel wechselst, und auch bei minimiertem Fenster.
         </p>
       </main></div>
+      {changelog && <Modal title={`Matrix Games ${version}`} onClose={() => setChangelog(false)}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+          <button style={S.secondaryBtn} onClick={() => checkUpdate(true)}>Nach Updates suchen</button>
+          {update?.tag && autoUpdate && <button style={S.primaryBtn} onClick={updateAusfuehren} title="Lädt das Update (falls nötig), beendet die App, installiert und startet neu"><ArrowUpCircle size={14} /> {update.bereit ? "Neu starten und installieren" : `${update.tag} automatisch installieren`}</button>}
+          {update?.tag && macUpdate && !update.macOffen && <button style={S.primaryBtn} onClick={updateAusfuehren} title="Lädt das passende DMG in den Download-Ordner und öffnet es. Danach die App nach „Programme“ ziehen."><ArrowUpCircle size={14} /> {update.tag} laden und öffnen</button>}
+          {update?.tag && macUpdate && update.macOffen && <button style={S.primaryBtn} onClick={() => api.appBeenden()} title="Beendet Matrix Games, damit du die neue Version nach „Programme“ ziehen kannst"><Power size={14} /> Matrix Games beenden</button>}
+          {update?.tag && !autoUpdate && !macUpdate && <button style={S.primaryBtn} onClick={updateAusfuehren} title="Öffnet die Download-Seite."><Download size={14} /> {update.tag} herunterladen</button>}
+          <button style={S.ghostBtn} onClick={() => api.openExternal(update?.url || RELEASES_URL)}>Alle Versionen auf GitHub</button>
+          <span style={{ fontSize: 12, color: update ? OK : SUB }}>{updateStatus}</span>
+        </div>
+        {Object.entries(CHANGELOG).map(([v, items]) => <div key={v}><div className="sp-section-label">Version {v}{v === version ? " (installiert)" : ""}</div><ul style={{ margin: "0 0 12px", paddingLeft: 18, lineHeight: 1.7, fontSize: 13 }}>{items.map((t, i) => <li key={i}>{t}</li>)}</ul></div>)}
+      </Modal>}
     </div>
   );
 }

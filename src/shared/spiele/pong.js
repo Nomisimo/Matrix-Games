@@ -20,7 +20,7 @@ const F = schrift({
   Q: [".X.", "X.X", "X.X", "X.X", ".XX"], R: ["XX.", "X.X", "XX.", "X.X", "X.X"],
   S: ["XXX", "X..", "XXX", "..X", "XXX"], T: ["XXX", ".X.", ".X.", ".X.", ".X."],
   U: ["X.X", "X.X", "X.X", "X.X", "XXX"], V: ["X.X", "X.X", "X.X", "X.X", ".X."],
-  W: ["X.X", "X.X", "X.X", "XXX", "X.X"], X: ["X.X", "X.X", ".X.", "X.X", "X.X"],
+  W: ["X.X", "X.X", "XXX", "XXX", "X.X"], X: ["X.X", "X.X", ".X.", "X.X", "X.X"],
   Y: ["X.X", "X.X", ".X.", ".X.", ".X."], Z: ["XXX", "..X", ".X.", "X..", "XXX"],
   " ": ["...", "...", "...", "...", "..."],
 }, { endLuecke: true });

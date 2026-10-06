@@ -1,5 +1,6 @@
-import React from "react";
-import { S, TEXT2 } from "../shared/constants.js";
+import React, { useEffect } from "react";
+import { X as XIcon } from "lucide-react";
+import { S, TEXT2, STRONG } from "../shared/constants.js";
 
 export function Toggle({ checked, onChange, label, title, disabled }) {
   return (
@@ -31,3 +32,22 @@ export const Table = ({ head, children }) => (
 );
 
 export const Hint = ({ children }) => <p style={{ ...S.hint, marginTop: 14 }}>{children}</p>;
+
+export function Modal({ title, onClose, children, width = 640 }) {
+  useEffect(() => {
+    const k = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [onClose]);
+  return (
+    <div style={S.modalOverlay} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div style={{ ...S.modalBox, width, maxWidth: "94vw" }}>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: STRONG, flex: 1 }}>{title}</div>
+          <button style={{ ...S.ghostBtn, padding: "3px 9px" }} onClick={onClose}><XIcon size={14} /></button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}

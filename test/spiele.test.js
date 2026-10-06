@@ -1,3 +1,5 @@
+import { CHANGELOG, compareVersions, neuesteVersion } from "../src/shared/version.js";
+import pkg from "../package.json" with { type: "json" };
 import test from "node:test";
 import assert from "node:assert/strict";
 import { SPIELE, Bild } from "../src/shared/spiele/index.js";
@@ -219,4 +221,15 @@ test("NDI-Bild: 10× hochskaliert, BGRA", () => {
   assert.deepEqual([...f.slice(9 * 4, 9 * 4 + 4)], [30, 20, 10, 255]);
   assert.deepEqual([...f.slice(10 * 4, 10 * 4 + 4)], [0, 0, 0, 255]);
   assert.deepEqual([...f.slice((9 * 480) * 4, (9 * 480) * 4 + 4)], [30, 20, 10, 255]);
+});
+
+/* ── Versionen (Update-Hinweis) ─────────────────────────────────────────── */
+test("Versionen: Betas vor der fertigen Version, neueste aus der Release-Liste", () => {
+  assert.ok(compareVersions("1.0.0-beta.2", "1.0.0-beta.1") > 0);
+  assert.ok(compareVersions("1.0.0-beta.10", "1.0.0-beta.9") > 0);
+  assert.ok(compareVersions("1.0.0", "1.0.0-beta.9") > 0);
+  assert.equal(compareVersions("v1.0.0", "1.0.0"), 0);
+  const n = neuesteVersion([{ tag_name: "v1.0.0-beta.1" }, { tag_name: "v1.0.0-beta.3", draft: true }, { tag_name: "v1.0.0-beta.2" }]);
+  assert.equal(n.tag_name, "v1.0.0-beta.2");
+  assert.ok(CHANGELOG[pkg.version], "Changelog-Eintrag für die Version in package.json fehlt");
 });

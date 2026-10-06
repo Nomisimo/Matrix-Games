@@ -22,6 +22,8 @@ npm run dist:mac   # .dmg (arm64 + x64)
 npm run dist:win   # .exe installer (NSIS, x64)
 ```
 
+**Updates and releases** work like in the Netzwerkplaner. The app checks GitHub for a newer release at start (click the version badge for the changelog and "Nach Updates suchen"). Windows installs it by itself (electron-updater); on macOS the app downloads the matching DMG and opens it. Releases are built only on demand: push a tag `v<version>` or start *Actions → Release → Run workflow*. Windows x64 plus macOS Apple Silicon and Intel; the release text comes from `src/shared/version.js`.
+
 ```
 src/main/          Electron main process; spiele/ausgabe.js = sACN and NDI sender
 src/preload/       IPC bridge (contextBridge)

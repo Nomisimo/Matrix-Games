@@ -1,13 +1,17 @@
-# Baut die Mac-App (Apple Silicon und Intel) und veröffentlicht sie als GitHub-Release.
-# Auslöser: Tag „v…“ pushen (z. B. git tag v1.0.0-beta.1 && git push origin v1.0.0-beta.1),
-# ein Push mit „[release]“ in der Commit-Nachricht (legt den Tag v<version> selbst an)
-# oder unter Actions → Release → „Run workflow“. Versionen mit Bindestrich werden Vorabversionen.
+# Baut die Installer für Windows (x64) und macOS (Apple Silicon und Intel)
+# und veröffentlicht sie als GitHub-Release. Wie im Netzwerkplaner.
+#
+# Nur von Hand auslösen:
+#  - einen Tag „v…“ pushen, z. B.  git tag v1.0.0-beta.2 && git push origin v1.0.0-beta.2
+#  - oder auf GitHub unter Actions → Release → „Run workflow“ starten: baut den gewählten
+#    Branch und legt den Tag v<version aus package.json> selbst an.
+# Tags mit Bindestrich (…-beta.1, …-rc.1) werden als Vorabversion (Beta) veröffentlicht.
+# Die Versionsnummer im Tag muss zur „version“ in package.json passen.
 name: Release
 
 on:
   push:
     tags: ["v*"]
-    branches: ["**"]
   workflow_dispatch:
 
 permissions:
@@ -16,36 +20,75 @@ permissions:
 jobs:
   build:
     name: Build ${{ matrix.name }}
-    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[release]')
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
+          - name: Windows x64
+            os: windows-latest
+            args: --win --x64
           - name: macOS Apple Silicon
             os: macos-latest
             args: --mac --arm64
-          # Intel-DMG auf einem Intel-Runner bauen, dort entsteht ein HFS+-Image
+          # Intel-DMG auf einem Intel-Runner bauen: dort entsteht ein HFS+-Image.
+          # Auf Apple-Silicon-Runnern baut electron-builder APFS-Images, die ältere
+          # macOS-Versionen als „beschädigt“ ablehnen.
           - name: macOS Intel
             os: macos-15-intel
             args: --mac --x64
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm test
-      - run: npm run build
+
+      - name: Abhängigkeiten installieren
+        run: npm ci
+
+      - name: Version prüfen
+        shell: bash
+        run: |
+          PKG="v$(node -p "require('./package.json').version")"
+          if [ "${{ github.ref_type }}" = "tag" ]; then TAG="${{ github.ref_name }}"; else TAG="$PKG"; fi
+          echo "Tag $TAG, package.json $PKG"
+          if [ "$TAG" != "$PKG" ]; then echo "::error::Tag $TAG passt nicht zu package.json ($PKG)"; exit 1; fi
+
+      - name: Tests
+        run: npm test
+
+      - name: App bauen
+        run: npm run build
+
       - name: Installer bauen
         run: npx electron-builder ${{ matrix.args }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      # Jeder Mac-Job darf genau ein DMG liefern, sonst überschreiben sich gleichnamige
+      # Dateien beim Zusammenführen der Artefakte und das DMG ist kaputt.
+      - name: DMG prüfen
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          ls -l dist/*.dmg
+          n=$(ls dist/*.dmg | wc -l | tr -d ' ')
+          if [ "$n" != "1" ]; then echo "::error::$n DMGs gebaut, erwartet 1"; exit 1; fi
+          hdiutil verify dist/*.dmg
+          if [[ "${{ matrix.args }}" == *x64* ]] && ! hdiutil imageinfo dist/*.dmg | grep -q "Apple_HFS"; then
+            echo "::error::Intel-DMG ist kein HFS+-Image"; exit 1
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: installer-${{ strategy.job-index }}
-          path: dist/*.dmg
+          # latest.yml braucht das automatische Update unter Windows
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/latest.yml
           if-no-files-found: error
 
   release:
@@ -54,17 +97,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - uses: actions/download-artifact@v4
         with:
           path: artefakte
           merge-multiple: true
-      - name: Veröffentlichen
-        env:
-          GH_TOKEN: ${{ github.token }}
+
+      - name: Release-Text aus dem Changelog der App
+        id: notes
         shell: bash
         run: |
-          TAG="v$(node -p "require('./package.json').version")"
-          if [ "${{ github.ref_type }}" = "tag" ]; then TAG="${{ github.ref_name }}"; fi
-          PRE=""; [[ "$TAG" == *-* ]] && PRE="--prerelease"
-          gh release create "$TAG" artefakte/*.dmg --title "Matrix Games ${TAG#v}" --target "${{ github.sha }}" $PRE \
-            --notes "Mac-App (Apple Silicon und Intel). Nicht signiert: beim ersten Start Rechtsklick auf die App → Öffnen."
+          PKG="v$(node -p "require('./package.json').version")"
+          if [ "${{ github.ref_type }}" = "tag" ]; then TAG="${{ github.ref_name }}"; else TAG="$PKG"; fi
+          V="${TAG#v}"
+          node --input-type=module -e '
+            const { CHANGELOG } = await import(process.cwd() + "/src/shared/version.js");
+            console.log((CHANGELOG[process.argv[1]] || []).map((t) => "- " + t).join("\n"));
+          ' "$V" > notes.md
+          cat .github/release-hinweise.md >> notes.md
+          echo "prerelease=$([[ "$TAG" == *-* ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.notes.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Matrix Games ${{ steps.notes.outputs.tag }}
+          body_path: notes.md
+          prerelease: ${{ steps.notes.outputs.prerelease }}
+          files: artefakte/*
