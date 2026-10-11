@@ -21,7 +21,7 @@ function createWindow() {
   });
   mainWin.setMenuBarVisibility(false);
   mainWin.loadFile(path.join(root, 'dist-app', 'index.html'));
-  mainWin.once('ready-to-show', () => { mainWin.show(); mainWin.focus(); });
+  mainWin.once('ready-to-show', () => { mainWin.show(); mainWin.focus(); mainWin.webContents.focus(); });
   mainWin.on('focus', () => { if (!mainWin.isDestroyed()) mainWin.webContents.focus(); });
   // Links im Standardbrowser öffnen
   mainWin.webContents.setWindowOpenHandler(({ url }) => {
