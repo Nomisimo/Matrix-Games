@@ -397,6 +397,7 @@ export function spawnDebris(col, row) {
 }
 
 /* ── Spielwelt ──────────────────────────────────────────────────────────── */
+const MAST = [200, 200, 200];
 const overlap = (ax, ay, aw, ah, bx, by, bw, bh) => ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 const hits = (a, e) => { const h = e.hitbox || e; return overlap(a.x, a.y, a.w, a.h, h.x, h.y, h.w, h.h); };
 // Punkte für mehrere Gegner hintereinander ohne Landen (wie im Original)
@@ -404,6 +405,7 @@ const COMBO = [100, 200, 400, 500, 800, 1000, 2000, 4000, 5000, 8000];
 const POLE_X = POLE_COL * TILE + 1, DOOR_X = (CASTLE_COL + 1) * TILE + 2;
 const CAM_MAX = (CASTLE_COL + 4) * TILE + 2 - W;
 const CAM_Y_MIN = -14;   // am Ende stehen Mast und Burg im Bild
+const BURG_MAST_X = CASTLE_COL * TILE + 7, BURG_FLAGGE_MAX = 4, BURG_CAM_Y = -5;
 export const weltName = (n) => `${1 + fdiv(n - 1, 4)}-${((n - 1) % 4) + 1}`;
 
 export class MarioWelt {
@@ -418,7 +420,7 @@ export class MarioWelt {
     this.cameraX = 0; this.cameraY = 0;
     this.score = 0; this.coins = 0; this.lives = 3;
     this.questTick = 0; this.questFrame = 0; this.gameOver = false;
-    this.ziel = null; this.courseClear = false; this.flagY = 1; this.prevRun = false;
+    this.ziel = null; this.courseClear = false; this.flagY = 1; this.burgFlagge = 0; this.prevRun = false;
     this.tempo = Math.min(1.6, 1 + 0.15 * (this.welt - 1));
     for (const [col, h] of piranhaPipes(this.welt)) this.enemies.push(new Piranha(col, LEVEL_H - 1 - h));
     this.ensureGenerated(fdiv(W + GEN_AHEAD, TILE));
@@ -483,7 +485,8 @@ export class MarioWelt {
     }
   }
 
-  // Zielsequenz: am Mast herunterrutschen, Punkte nach Höhe, in die Burg laufen
+  // Zielsequenz: am Mast herunterrutschen, Punkte nach Höhe, in die Burg laufen,
+  // dann steigt die Fahne über der Burg
   startZiel() {
     const m = this.mario;
     const hoehe = int(m.y + m.h);
@@ -510,7 +513,14 @@ export class MarioWelt {
     } else if (z.phase === "laufen") {
       m.update(this.tiles, { right: true, left: false, jump: false, run: false, duck: false });
       if (m.x >= DOOR_X) { m.hidden = true; z.phase = "burg"; z.t = 0; }
-    } else if (z.phase === "burg" && z.t >= 90) this.courseClear = true;
+    } else if (z.phase === "burg") {
+      // Kamera hebt sich ein Stück, damit die Fahne unter der Anzeige zu sehen ist
+      if (z.t % 3 === 0 && this.cameraY > BURG_CAM_Y) this.cameraY--;
+      if (z.t > 15 && z.t % 8 === 0 && this.burgFlagge < BURG_FLAGGE_MAX) this.burgFlagge++;
+      if (z.t >= 120) this.courseClear = true;
+    }
+    // Bis Mario in der Burg ist, folgt die Kamera ihm wieder nach unten
+    if (z.phase !== "burg") this.kamera();
     for (const it of this.items) it.update(this.tiles);
     this.items = this.items.filter((i) => !i.remove);
   }
@@ -595,19 +605,24 @@ export class MarioWelt {
     const purgeItems = this.cameraX - W;
     this.items = this.items.filter((i) => !i.remove && i.x > purgeItems);
 
-    // Kamera: nur nach rechts, am Ende der Strecke stehen bleiben; nach oben sofort folgen, langsam zurück
-    this.cameraX = Math.min(CAM_MAX, Math.max(0, Math.max(this.cameraX, int(m.x) - 16)));
-    const ty = int(m.y) - 3;
-    if (ty < this.cameraY) this.cameraY = ty;
-    else if (this.cameraY < 0) this.cameraY = Math.min(0, this.cameraY + 1);
-    // Hohe Sprünge (von Röhren und Treppen) bleiben im Bild; beim Fallen folgt die Kamera nach unten
-    this.cameraY = Math.min(0, Math.max(this.cameraY, CAM_Y_MIN, int(m.y + m.h) - H + 1));
+    this.kamera();
 
     if (m.deadDone) {
       this.lives--;
       if (this.lives <= 0) this.gameOver = true;
       else this.resetAfterDeath();
     }
+  }
+  // Kamera: nur nach rechts, am Ende der Strecke stehen bleiben; nach oben sofort folgen, langsam zurück.
+  // Steht Mario still auf einem hohen Block, bleibt sie ruhig (sonst springt das Bild jede Frame um 1 px).
+  kamera() {
+    const m = this.mario;
+    this.cameraX = Math.min(CAM_MAX, Math.max(0, Math.max(this.cameraX, int(m.x) - 16)));
+    const ty = int(m.y) - 3;
+    if (ty < this.cameraY) this.cameraY = ty;
+    else if (ty > this.cameraY && this.cameraY < 0) this.cameraY = Math.min(0, this.cameraY + 1);
+    // Hohe Sprünge (von Röhren und Treppen) bleiben im Bild; beim Fallen folgt die Kamera nach unten
+    this.cameraY = Math.min(0, Math.max(this.cameraY, CAM_Y_MIN, int(m.y + m.h) - H + 1));
   }
   resetAfterDeath() {
     const { lives, score, coins } = this;
@@ -627,6 +642,12 @@ export class MarioWelt {
     const cam = this.cameraX, camY = this.cameraY;
     // Pflanzen hinter den Röhren zeichnen
     for (const e of this.enemies) if (e instanceof Piranha && !e.knocked) e.render(b, cam, camY);
+    // Fahne über der Burg: steigt hinter den Zinnen hervor
+    if (this.burgFlagge > 0) {
+      const top = 4 - this.burgFlagge, mx = BURG_MAST_X - cam;
+      for (let y = top; y < 4; y++) b.set(mx, y - camY, MAST);
+      drawSprite(b, flipH(FLAG), mx + 1, top - camY);
+    }
     const c0 = fdiv(cam, TILE), c1 = Math.min(this.levelW - 1, fdiv(cam + W, TILE) + 1);
     for (let row = 0; row < LEVEL_H; row++) {
       for (let col = c0; col <= c1; col++) {

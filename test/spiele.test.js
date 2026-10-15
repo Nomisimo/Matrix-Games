@@ -175,6 +175,29 @@ test("Mario: am Mast ist die Welt geschafft, danach kommt Welt 1-2", () => {
   assert.ok(!w.courseClear && w.mario.x < 40);
 });
 
+test("Mario: auf hohen Blöcken bleibt die Kamera ruhig", () => {
+  const w = new MarioWelt();
+  w.enemies = [];
+  w.ensureGenerated(100);
+  w.mario.x = 55 * TILE; w.mario.y = TILE - MARIO_SMALL_H - 2; w.cameraX = 200;   // über der Ziegelreihe in Zeile 1
+  for (let i = 0; i < 10; i++) w.update(KEINE);
+  const y = w.cameraY;
+  for (let i = 0; i < 30; i++) { w.update(KEINE); assert.equal(w.cameraY, y, "Kamera wackelt"); }
+});
+
+test("Mario: nach hohem Sprung an den Mast fährt die Kamera zurück, die Burgfahne steigt", () => {
+  const w = new MarioWelt();
+  w.enemies = [];
+  w.ensureGenerated(TEMPLATE_W);
+  w.mario.x = POLE_COL * TILE - 7; w.mario.y = -14; w.cameraX = 690; w.cameraY = -14;
+  let n = 0;
+  while (!(w.ziel && w.ziel.phase === "laufen") && n++ < 500) w.update({ ...KEINE, right: true });
+  assert.equal(w.cameraY, 0, "Boden nicht im Bild, während Mario zur Burg läuft");
+  while (!w.courseClear && n++ < 2000) w.update(KEINE);
+  assert.ok(w.courseClear);
+  assert.ok(w.burgFlagge > 0, "Fahne über der Burg ist nicht gestiegen");
+});
+
 /* ── Ausgabe: sACN wie sacn_output.py ───────────────────────────────────── */
 test("Matrix-Zuordnung: Kacheln spaltenweise, Pixel zeilenweise", () => {
   const b = new Bild();
