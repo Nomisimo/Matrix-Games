@@ -18,7 +18,8 @@ const START = new Set(["Enter", "Space", "NumpadEnter"]);
 
 // Spiel mit Demo als Startbild. starte(spiel, code) bringt eine frische Runde direkt ins Spiel.
 export function mitDemo({ create, demo, starte, startTasten = START }) {
-  return ({ ton = () => {}, koennen = () => 1 } = {}) => {
+  return (opts = {}) => {
+    const { ton = () => {}, koennen = () => 1 } = opts;
     let modus = "demo", spiel = null, d = demo({ koennen }), leer = 0, ende = 0;
     const zurDemo = () => { modus = "demo"; spiel = null; d = demo({ koennen }); ton("_stop"); };
     return {
@@ -28,7 +29,7 @@ export function mitDemo({ create, demo, starte, startTasten = START }) {
         leer = 0;
         if (modus === "demo") {
           if (!startTasten.has(code)) return;
-          spiel = create({ ton });
+          spiel = create({ ...opts, ton });   // weitere Einstellungen (z. B. vorhersage) gehen durch
           modus = "spiel"; ende = 0;
           starte(spiel, code);
           return;

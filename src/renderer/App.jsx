@@ -11,7 +11,7 @@ const APP_ICON = `data:image/svg+xml;utf8,${encodeURIComponent(APP_ICON_SVG)}`;
 
 const LS = "matrixgames_einstellungen";
 // Vorgaben wie im Snake-Original auf der echten Matrix (Universe 29 und 33, 144 Pixel je Universe)
-const STANDARD = { spiel: "snake", ton: true, schwarz: false, koennen: 80, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games" } };
+const STANDARD = { spiel: "snake", ton: true, schwarz: false, koennen: 80, vorhersage: 0, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games" } };
 const laden = () => {
   try {
     const v = JSON.parse(localStorage.getItem(LS) || "null");
@@ -96,10 +96,11 @@ export default function App() {
   const canvasRef = useRef(null), matrixRef = useRef(null);
   const gameRef = useRef(null), tonRef = useRef(null), held = useRef(new Set()), zustandRef = useRef("demo");
   const ausgabeAn = (cfg.sacn.on || cfg.ndi.on) && isElectron;
-  const ausgabeRef = useRef(ausgabeAn), schwarzRef = useRef(cfg.schwarz), spielRef = useRef(cfg.spiel), koennenRef = useRef(cfg.koennen);
+  const ausgabeRef = useRef(ausgabeAn), schwarzRef = useRef(cfg.schwarz), spielRef = useRef(cfg.spiel), koennenRef = useRef(cfg.koennen), vorhersageRef = useRef(cfg.vorhersage);
   ausgabeRef.current = ausgabeAn;
   schwarzRef.current = cfg.schwarz;
   koennenRef.current = cfg.koennen;
+  vorhersageRef.current = cfg.vorhersage;
   spielRef.current = cfg.spiel;
 
   useEffect(() => { try { localStorage.setItem(LS, JSON.stringify(cfg)); } catch {} }, [cfg]);
@@ -155,7 +156,7 @@ export default function App() {
   const neu = useCallback(() => {
     tonRef.current?.stopAlle();
     const def = SPIELE.find((s) => s.id === cfg.spiel) || SPIELE[0];
-    gameRef.current = def.create({ ton: (name) => tonRef.current?.play(def.id, name), koennen: () => (koennenRef.current ?? 80) / 100 });
+    gameRef.current = def.create({ ton: (name) => tonRef.current?.play(def.id, name), koennen: () => (koennenRef.current ?? 80) / 100, vorhersage: () => vorhersageRef.current ?? 0 });
     held.current.clear();
     document.activeElement?.blur?.();
   }, [cfg.spiel]);
@@ -312,6 +313,24 @@ export default function App() {
                     : "Snake macht viele Fehler und beißt sich schnell selbst, Pong verliert schnell Punkte."}
               </span>
             </Card>
+            {def.id === "snake" && <Card title="Verzögerung ausgleichen (Snake)">
+              <p style={{ ...S.hint, margin: "0 0 10px" }}>
+                Über NDI und DMX zeigt die LED-Wand das Spiel etwas später. Mit diesem Wert gilt ein Tastendruck für das Bild,
+                das man auf der Wand gerade sieht: Snake rechnet so viel zurück und biegt dort ab. Es wird nur ausgeführt, was
+                wirklich gedrückt wurde. Lässt sich auch während des Spiels verstellen.
+              </p>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: TEXT2 }}>
+                <span style={{ whiteSpace: "nowrap" }}>Verzögerung</span>
+                <input type="range" min={0} max={500} step={10} value={cfg.vorhersage} onChange={(e) => set("vorhersage", +e.target.value)}
+                  style={{ flex: 1, accentColor: ACCENT, minWidth: 120 }} />
+                <b style={{ width: 52, textAlign: "right", color: ACCENT }}>{cfg.vorhersage ? `${cfg.vorhersage} ms` : "aus"}</b>
+              </label>
+              <span className="sp-norm-hint">
+                {cfg.vorhersage
+                  ? "Stößt die Schlange an, bleibt sie so lange stehen, wie hier eingestellt ist. Eine Taste, die noch rechtzeitig für das gesehene Bild kam, rettet sie."
+                  : "Aus: Tasten wirken sofort, wie bisher. Gut zum Spielen am Bildschirm der App."}
+              </span>
+            </Card>}
             <Card title="Tasten">
               <Table head={["Taste", "Funktion"]}>
                 {def.tasten.map(([k, f]) => <tr key={k}><td style={td({ fontWeight: 600, whiteSpace: "nowrap" })}>{k}</td><td style={td()}>{f}</td></tr>)}
