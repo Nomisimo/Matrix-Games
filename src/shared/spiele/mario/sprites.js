@@ -7,7 +7,7 @@ const P = {
   o: [75, 30, 8], L: [185, 105, 30], N: [125, 65, 20], n: [65, 30, 5],
   H: [185, 178, 158], h: [132, 126, 107], T: [210, 40, 40], t: [140, 20, 20],
   F: [255, 80, 0], f: [80, 160, 30], C: [60, 155, 60], c: [30, 90, 30],
-  g: [0, 120, 0], x: [25, 12, 4], ".": null,
+  g: [0, 120, 0], x: [25, 12, 4], V: [60, 120, 230], v: [20, 50, 140], ".": null,
 };
 const s = (rows) => rows.map((r) => [...r].map((ch) => P[ch]));
 
@@ -80,6 +80,19 @@ export const TILE_MAP = {
   D: s(["xxxx", "xxxx", "xxxx", "xxxx"]),
   d: s(["Oxxx", "xxxx", "xxxx", "xxxx"]),
   e: s(["xxxO", "xxxx", "xxxx", "xxxx"]),
+};
+// Unter der Erde: blaue Ziegel und blauer Boden, Münzen als Kacheln
+export const TILE_MAP_UNTEN = {
+  ...TILE_MAP,
+  G: s(["VVvV", "vvvv", "VvVV", "vvvv"]),
+  B: s(["VvVV", "VVVV", "vVVV", "VVVV"]),
+  U: s(["VVvV", "vvvv", "VvVV", "vvvv"]),
+  o: s([".YY.", ".yY.", ".YY.", "...."]),
+  // liegende Ausgangsröhre: Öffnung links, Rohr in die Wand
+  "{": s(["DDDD", "DGGG", "DGGG", "DGGG"]),
+  "}": s(["DGGG", "DGGG", "DGGG", "DDDD"]),
+  "=": s(["gggg", "GGGG", "GGGG", "GGGG"]),
+  _: s(["GGGG", "GGGG", "GGGG", "gggg"]),
 };
 export const FLAG = s(["EEE", ".Ef", "..E"]);
 
