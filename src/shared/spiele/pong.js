@@ -33,6 +33,9 @@ export const WINNING_SCORE = 7;
 const TOP_WALL = 0, BOTTOM_WALL = 23, PLAY_TOP = 1, PADDLE_MIN = 1, PADDLE_MAX = 17;
 const AI_DEAD_ZONE_START = 3.0, AI_DEAD_ZONE_MIN = 0.5, AI_SPEED_START = 0.40, AI_RAMP_FRAMES = 180;
 const POINT_PAUSE_FRAMES = 60;
+// Stärke des Computers (0–1). Bei 0,6 spielt er wie im Original, darunter langsamer und träger,
+// darüber schneller und er rechnet aus, wo der Ball ankommt.
+export const COM_STANDARD = 0.6;
 
 const clamp = (v) => Math.max(PADDLE_MIN, Math.min(PADDLE_MAX, v));
 const speed = (b) => Math.hypot(b.vx, b.vy);
@@ -48,8 +51,8 @@ export function resetBall(ball, direction = null, rnd = Math.random) {
 }
 
 export class PongRunde {
-  constructor(twoPlayer = false, ton = () => {}) {
-    this.twoPlayer = twoPlayer; this.ton = ton;
+  constructor(twoPlayer = false, ton = () => {}, staerke = () => COM_STANDARD) {
+    this.twoPlayer = twoPlayer; this.ton = ton; this.staerke = staerke;
     this.ball = { x: 23, y: 11, vx: 0, vy: 0, w: 2, h: 2 };
     this.left = { x: 1, y: 9, vy: 0, w: 1, h: 6 };
     this.right = { x: 46, y: 9, vy: 0, w: 1, h: 6 };
@@ -57,11 +60,19 @@ export class PongRunde {
     resetBall(this.ball);
   }
   aiUpdate(ball, p) {
+    const s = Math.max(0, Math.min(1, +this.staerke() || 0));
+    const schwach = Math.max(0, COM_STANDARD - s) / COM_STANDARD, stark = Math.max(0, s - COM_STANDARD) / (1 - COM_STANDARD);
     const t = Math.min(1, this.framesSincePoint / AI_RAMP_FRAMES);
-    const dead = AI_DEAD_ZONE_START + (AI_DEAD_ZONE_MIN - AI_DEAD_ZONE_START) * t;
-    const sp = PADDLE_SPEED * (AI_SPEED_START + (1 - AI_SPEED_START) * t);
+    const deadMin = AI_DEAD_ZONE_MIN + 3.5 * schwach;
+    const dead = AI_DEAD_ZONE_START + (deadMin - AI_DEAD_ZONE_START) * t;
+    const tempo = 1 - 0.55 * schwach + 0.5 * stark;
+    const sp = PADDLE_SPEED * tempo * (AI_SPEED_START + (1 - AI_SPEED_START) * t);
     const c = p.y + p.h / 2;
-    p.vy = Math.abs(ball.y - c) > dead ? sp * (ball.y > c ? 1 : -1) : 0;
+    // Stark: zielt (anteilig) auf die Stelle, an der der Ball am Schläger ankommt
+    let ziel = ball.y;
+    if (stark > 0 && ball.vx * (p.x - ball.x) > 0) ziel += (ankunft(ball, p.x > 23 ? p.x - ball.w : p.x + p.w) - 1 - ziel) * stark;
+    p.vy = Math.abs(ziel - c) > dead ? sp * (ziel > c ? 1 : -1) : 0;
+    if (stark > 0 && Math.abs(ziel - c) < Math.abs(p.vy)) p.vy = ziel - c;
   }
   // held: Set mit KeyboardEvent.code der gedrückten Tasten
   update(held) {
@@ -96,6 +107,15 @@ export class PongRunde {
   }
 }
 
+// Höhe (Ballmitte), in der der Ball bei x ankommt, mit Abprallern an den Wänden
+function ankunft(ball, x) {
+  const t = (x - ball.x) / ball.vx;
+  const lo = PLAY_TOP + 1, hi = BOTTOM_WALL - 1, h = hi - lo;
+  let y = ball.y + 1 + ball.vy * t - lo;
+  y = ((y % (2 * h)) + 2 * h) % (2 * h);
+  return lo + (y > h ? 2 * h - y : y);
+}
+
 function feld(b) {
   b.fill(BLACK);
   b.rect(0, TOP_WALL, 48, 1, PINK); b.rect(0, BOTTOM_WALL, 48, 1, PINK);
@@ -108,18 +128,28 @@ function scores(b, g) {
   drawText(b, String(g.scoreRight), 25, 1, SCORE_COLOR);
 }
 
-export function createPong({ ton = () => {} } = {}) {
-  let state = "title", game = null, pause = 0, lastScorer = null;
+/* rekord: { get, set } für die beste Siegesserie gegen den Computer; sitzung.serie zählt die
+   laufende Serie über mehrere Runden. comStaerke: () => 0–1 */
+export function createPong({ ton = () => {}, comStaerke = () => COM_STANDARD, rekord, sitzung = {} } = {}) {
+  let state = "title", game = null, pause = 0, lastScorer = null, neuerRekord = false;
   const lobby = { bx: 23, by: 11, bvx: 0.55, bvy: 0.38, mode: 1 };
+  const serieZaehlen = () => {
+    if (game.twoPlayer) return;
+    sitzung.serie = game.scoreLeft >= WINNING_SCORE ? (sitzung.serie || 0) + 1 : 0;
+    neuerRekord = !!rekord && sitzung.serie > 0 && sitzung.serie > rekord.get();
+    if (neuerRekord) rekord.set(sitzung.serie);
+  };
   return {
     id: "pong",
     get state() { return state; },
     get mode() { return lobby.mode; },
+    get serie() { return sitzung.serie || 0; },
+    get runde() { return game; },
     key(code) {
       if (state === "title") {
         if (code === "ArrowLeft" || code === "Digit1") lobby.mode = 1;
         else if (code === "ArrowRight" || code === "Digit2") lobby.mode = 2;
-        else if (code === "Space" || code === "Enter") { game = new PongRunde(lobby.mode === 2, ton); state = "playing"; }
+        else if (code === "Space" || code === "Enter") { game = new PongRunde(lobby.mode === 2, ton, comStaerke); state = "playing"; }
       } else if (state === "game_over" && code === "Space") state = "title";
     },
     step(held) {
@@ -134,7 +164,7 @@ export function createPong({ ton = () => {} } = {}) {
         const s = game.update(held);
         if (s != null) {
           lastScorer = s;
-          if (game.scoreLeft >= WINNING_SCORE || game.scoreRight >= WINNING_SCORE) state = "game_over";
+          if (game.scoreLeft >= WINNING_SCORE || game.scoreRight >= WINNING_SCORE) { state = "game_over"; serieZaehlen(); }
           else { pause = POINT_PAUSE_FRAMES; state = "point_scored"; }
         }
       } else if (state === "point_scored") {
@@ -157,7 +187,9 @@ export function createPong({ ton = () => {} } = {}) {
         scores(b, game);
         const winner = game.scoreLeft >= WINNING_SCORE ? "P1" : game.twoPlayer ? "P2" : "COM";
         drawText(b, winner + " WINS", center(winner + " WINS"), 9, PINK);
-        drawText(b, "PRESS SPACE", center("PRESS SPACE"), 17, PINK);
+        // Gegen den Computer: Siegesserie und Rekord statt „PRESS SPACE“
+        const zeile = game.twoPlayer ? "PRESS SPACE" : neuerRekord ? "NEW BEST " + sitzung.serie : sitzung.serie ? "STREAK " + sitzung.serie : rekord?.get() ? "BEST " + rekord.get() : "PRESS SPACE";
+        drawText(b, zeile, center(zeile), 17, neuerRekord ? [255, 220, 0] : PINK);
       } else game.render(b);
     },
   };

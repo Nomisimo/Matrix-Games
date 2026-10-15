@@ -255,13 +255,16 @@ export function createSnakeDemo({ koennen = () => 1 } = {}) {
   };
 }
 
-export function createSnake({ ton = () => {} } = {}) {
-  let state = "title", game = null, high = 0, blink = 0;
+// rekord: { get, set } für den gespeicherten Highscore (ohne: nur für diese Sitzung)
+export function createSnake({ ton = () => {}, rekord } = {}) {
+  let state = "title", game = null, blink = 0, neuerRekord = false, eigener = 0;
+  rekord ||= { get: () => eigener, set: (n) => { eigener = n; } };
   const neu = () => { game = new SnakeRunde(ton); state = "playing"; };
   return {
     id: "snake",
     get state() { return state; },
     get score() { return game?.score || 0; },
+    get spiel() { return game; },
     key(code) {
       if (state === "title") { if (code === "Space") neu(); }
       else if (state === "playing") { if (code === "Escape" || code === "KeyP") state = "paused"; else game.handleKey(code); }
@@ -275,7 +278,8 @@ export function createSnake({ ton = () => {} } = {}) {
     },
     step() {
       if (state === "playing" && game.update(DT) === "dead") {
-        if (game.score > high) high = game.score;
+        neuerRekord = game.score > 0 && game.score > rekord.get();
+        if (neuerRekord) rekord.set(game.score);
         state = "game_over";
       }
       blink += DT;
@@ -287,7 +291,7 @@ export function createSnake({ ton = () => {} } = {}) {
         DECO.forEach(([x, y], i) => b.set(x, y, i === 0 ? HEAD : BODY));
         b.set(34, 10, FOOD);
         if (Math.floor(blink * 2) % 2 === 0) drawText(b, "PRESS SPACE", cx("PRESS SPACE"), 14, SCORE_C);
-        if (high > 0) { const hs = "BEST " + high; drawText(b, hs, cx(hs), 18, [90, 90, 200]); }
+        if (rekord.get() > 0) { const hs = "BEST " + rekord.get(); drawText(b, hs, cx(hs), 18, [90, 90, 200]); }
       } else if (state === "playing") game.render(b);
       else if (state === "paused") {
         game.render(b);
@@ -300,10 +304,8 @@ export function createSnake({ ton = () => {} } = {}) {
         drawText(b, msg, cx(msg), 2, col);
         const sc = "SCORE " + game.score;
         drawText(b, sc, cx(sc), 9, SCORE_C);
-        if (high > 0) {
-          if (game.score >= high) drawText(b, "NEW BEST", cx("NEW BEST"), 16, [255, 220, 0]);
-          else { const hs = "BEST " + high; drawText(b, hs, cx(hs), 16, [90, 90, 200]); }
-        }
+        if (neuerRekord) drawText(b, "NEW BEST", cx("NEW BEST"), 16, [255, 220, 0]);
+        else if (rekord.get() > 0) { const hs = "BEST " + rekord.get(); drawText(b, hs, cx(hs), 16, [90, 90, 200]); }
       }
     },
   };

@@ -5,7 +5,9 @@ import assert from "node:assert/strict";
 import { SPIELE, Bild, LEERLAUF } from "../src/shared/spiele/index.js";
 import { createMarioDemo } from "../src/shared/spiele/mario/demo.js";
 import { SnakeRunde, TICK_RATES, snakeZug, demoZug, FELDER } from "../src/shared/spiele/snake.js";
-import { PongRunde, WINNING_SCORE } from "../src/shared/spiele/pong.js";
+import { PongRunde, WINNING_SCORE, createPong } from "../src/shared/spiele/pong.js";
+import { createSnake } from "../src/shared/spiele/snake.js";
+import { createMenue } from "../src/shared/spiele/menue.js";
 import { MarioWelt, Goomba, Koopa, GROUND_Y, MARIO_SMALL_H, TILE, weltName } from "../src/shared/spiele/mario/welt.js";
 import { genColumn, POLE_COL, TEMPLATE_W } from "../src/shared/spiele/mario/level.js";
 import { schrift } from "../src/shared/spiele/pixel.js";
@@ -29,7 +31,7 @@ test("Schriftbreiten wie in den drei Python-Fonts", () => {
 
 /* ── Alle Spiele laufen ohne Fehler ─────────────────────────────────────── */
 test("jedes Spiel übersteht 5000 Bilder mit zufälligen Tasten", () => {
-  const codes = ["Space", "Enter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "KeyW", "KeyS", "KeyA", "KeyD", "ShiftLeft", "Digit2", "Escape"];
+  const codes = ["Space", "Enter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "KeyW", "KeyS", "KeyA", "KeyD", "ShiftLeft", "Digit2", "KeyP", "Pause", "Escape"];
   let seed = 7;
   const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
   for (const s of SPIELE) {
@@ -323,4 +325,120 @@ test("Mario-Demo: gleiches Tempo, kein Rundenende", () => {
     assert.equal(d.welt.welt, 1, "Demo-Welt soll nicht schneller werden");
   }
   assert.ok(maxTempo <= 0.61, `Mario läuft mit ${maxTempo} zu schnell`);
+});
+
+/* ── Pause, Demo-Zeit, Highscores, Spielmenü, Pong-Computer ─────────────── */
+test("Pause: P und Start (Gamepad) halten jedes Spiel an, auch den Leerlauf", () => {
+  for (const def of SPIELE) {
+    const g = def.create({ leerlauf: () => 1 });
+    g.key("Enter");
+    for (let i = 0; i < 20; i++) g.step(new Set());
+    const vorher = g.state;
+    g.key("KeyP");
+    assert.equal(g.state, "paused", def.id);
+    const b1 = new Bild(), b2 = new Bild();
+    g.render(b1);
+    for (let i = 0; i < 300; i++) g.step(new Set(["ArrowRight"]));
+    g.render(b2);
+    assert.deepEqual(b1.px, b2.px, `${def.id}: in der Pause darf sich nichts bewegen`);
+    assert.equal(g.state, "paused", `${def.id}: Pause läuft nicht in die Demo`);
+    g.key("Pause");
+    assert.equal(g.state, vorher, def.id);
+    g.pausieren(true);
+    assert.equal(g.state, "paused", def.id);
+    g.pausieren(false);
+    assert.notEqual(g.state, "paused", def.id);
+  }
+});
+
+test("Demo-Zeit ist einstellbar, 0 heißt nie", () => {
+  for (const def of SPIELE) {
+    let sek = 5;
+    const g = def.create({ leerlauf: () => sek });
+    g.key("Enter");
+    for (let i = 0; i < 4 * 60; i++) g.step(new Set());
+    assert.notEqual(g.state, "demo", def.id);
+    for (let i = 0; i < 2 * 60; i++) g.step(new Set());
+    assert.equal(g.state, "demo", `${def.id}: nach 5 s zurück`);
+    sek = 0;
+    g.key("Enter");
+    for (let i = 0; i < LEERLAUF * 2; i++) { g.step(new Set()); if (g.state === "game_over") break; }
+    if (def.id !== "snake") assert.notEqual(g.state, "demo", `${def.id}: ohne Leerlauf bleibt das Spiel`);
+  }
+});
+
+test("Highscores: Snake speichert über rekord, 0 Punkte zählen nicht", () => {
+  let wert = 0;
+  const rekord = { get: () => wert, set: (n) => { wert = n; } };
+  const s = createSnake({ rekord });
+  s.key("Space");
+  for (let i = 0; i < 60 * 60 && s.state !== "game_over"; i++) s.step();
+  assert.equal(s.state, "game_over");
+  assert.equal(wert, 0, "0 Punkte sind kein Rekord");
+  s.key("Space");
+  s.spiel.score = 120;   // Runde mit Punkten nachstellen
+  for (let i = 0; i < 60 * 60 && s.state !== "game_over"; i++) s.step();
+  assert.equal(wert, 120);
+});
+
+test("Pong: Siegesserie gegen den Computer zählt über Runden und setzt den Rekord", () => {
+  let wert = 1;
+  const rekord = { get: () => wert, set: (n) => { wert = n; } };
+  const sitzung = {};
+  const gewinne = () => {
+    const p = createPong({ rekord, sitzung });
+    p.key("Digit1"); p.key("Space");
+    // Computer trifft den Ball nie: rechts hinaus schießen
+    while (p.state !== "game_over") {
+      p.step(new Set());
+      const g = p.runde;
+      if (g) { g.right.y = g.ball.y > 12 ? 1 : 17; }
+    }
+    return p;
+  };
+  gewinne(); gewinne();
+  assert.equal(sitzung.serie, 2);
+  assert.equal(wert, 2, "Serie 2 schlägt den alten Rekord 1");
+});
+
+test("Pong: ein starker Computer hält mehr Bälle als ein schwacher", () => {
+  const punkte = (staerke) => {
+    let links = 0, seed = 3;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const orig = Math.random; Math.random = rnd;
+    try {
+      const g = new PongRunde(false, () => {}, () => staerke);
+      // Links ein fast perfekter Spieler, damit der Ball oft zurückkommt
+      for (let i = 0; i < 60 * 240; i++) {
+        const held = new Set(), c = g.left.y + 3;
+        if (g.ball.y + 1 < c - 0.5) held.add("KeyW"); else if (g.ball.y + 1 > c + 0.5) held.add("KeyS");
+        const s = g.update(held);
+        if (s === -1) links++;
+        if (s != null) g.ball.x = 23, g.ball.y = 11, g.ball.vx = s * 0.5, g.ball.vy = 0.2;
+      }
+    } finally { Math.random = orig; }
+    return links;
+  };
+  const schwach = punkte(0), stark = punkte(1);
+  assert.ok(schwach > stark, `schwach ${schwach} Punkte gegen sich, stark ${stark}`);
+});
+
+test("Spielmenü: wählt Spiel und Pong-Modus, Esc führt zurück", () => {
+  const m = createMenue({ aktuell: "pong" });
+  assert.equal(m.auswahl, "pong");
+  assert.deepEqual(m.key("Enter"), { start: "pong", taste: "Digit1" });
+  m.key("ArrowRight");
+  assert.deepEqual(m.key("Space"), { start: "pong", taste: "Digit2" });
+  m.key("ArrowDown");
+  assert.equal(m.auswahl, "mario");
+  assert.deepEqual(m.key("Pause"), { start: "mario", taste: "Enter" });
+  m.key("ArrowDown");
+  assert.equal(m.auswahl, "snake");
+  assert.deepEqual(m.key("Escape"), { zurueck: true });
+  const b = new Bild();
+  m.render(b);
+  assert.ok(b.px.some((v) => v > 0));
+  // Controller 2 startet Pong zu zweit, auch wenn 1P gewählt ist
+  const m2 = createMenue({ aktuell: "pong" });
+  assert.deepEqual(m2.key("Digit2"), { start: "pong", taste: "Digit2" });
 });
