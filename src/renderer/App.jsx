@@ -1,24 +1,25 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { S, ACCENT, OK, ERR, WARN, SUB, MUTED, TEXT2, INPUT, LINE, THEME_KEY, themeWahl } from "../shared/constants.js";
 import { SPIELE, Bild, W, H } from "../shared/spiele/index.js";
+import { anleitungHtml, verfuegbareSpiele } from "../shared/anleitung.js";
 import { createMenue } from "../shared/spiele/menue.js";
 import { api, isElectron } from "./api.js";
 import { createTon } from "./spiele/ton.js";
 import { Toggle, Dot, Card, Table, td, Hint, Modal } from "./ui.jsx";
 import { CHANGELOG, compareVersions, neuesteVersion, istBeta, RELEASES_URL } from "../shared/version.js";
-import { Volume2, VolumeX, RotateCcw, RefreshCw, TriangleAlert, Gamepad2, Sun, Moon, Monitor, Power, Keyboard, ArrowUpCircle, Download, Pause, Play, Trophy } from "lucide-react";
+import { Volume2, VolumeX, RotateCcw, RefreshCw, TriangleAlert, Gamepad2, Sun, Moon, Monitor, Power, Keyboard, ArrowUpCircle, Download, Pause, Play, Trophy, FileDown } from "lucide-react";
 import APP_ICON_SVG from "../../assets/app-icon/icon.svg";
 const APP_ICON = `data:image/svg+xml;utf8,${encodeURIComponent(APP_ICON_SVG)}`;
 
 const LS = "matrixgames_einstellungen";
 // Vorgaben wie im Snake-Original auf der echten Matrix (Universe 29 und 33, 144 Pixel je Universe)
 // menue: Spielmenü auf der Matrix; leerlauf: Sekunden ohne Eingabe bis zur Demo (0 = nie);
-// comStaerke: Pong-Computer in %; rekorde: Highscore je Spiel
-const STANDARD = { spiel: "snake", ton: true, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, rekorde: {}, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games" } };
+// comStaerke: Pong-Computer in %; rekorde: Highscore je Spiel; aus: abgewählte Spiele (ids)
+const STANDARD = { spiel: "snake", aus: [], ton: true, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, rekorde: {}, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games" } };
 const laden = () => {
   try {
     const v = JSON.parse(localStorage.getItem(LS) || "null");
-    return v ? { ...STANDARD, ...v, rekorde: { ...v.rekorde }, sacn: { ...STANDARD.sacn, ...v.sacn }, ndi: { ...STANDARD.ndi, ...v.ndi } } : STANDARD;
+    return v ? { ...STANDARD, ...v, aus: Array.isArray(v.aus) ? v.aus : [], rekorde: { ...v.rekorde }, sacn: { ...STANDARD.sacn, ...v.sacn }, ndi: { ...STANDARD.ndi, ...v.ndi } } : STANDARD;
   } catch { return STANDARD; }
 };
 
@@ -191,6 +192,12 @@ export default function App() {
     document.activeElement?.blur?.();
   }, [cfg.spiel]);
   useEffect(() => { neu(); }, [neu]);
+  // Wird das laufende Spiel abgewählt, übernimmt das erste verfügbare
+  useEffect(() => {
+    if (!cfg.aus.includes(cfg.spiel)) return;
+    const v = verfuegbareSpiele(SPIELE, cfg.aus);
+    if (v.length) set("spiel", v[0].id);
+  }, [cfg.aus, cfg.spiel]);
 
   /* Jeder Tastendruck (Tastatur und Gamepad) läuft hier durch: ist das Spielmenü an, öffnet der
      Start aus der Demo erst das Menü auf der Matrix, das dann das Spiel wählt und startet. */
@@ -207,7 +214,8 @@ export default function App() {
       return;
     }
     if (cfgRef.current.menue && g?.state === "demo" && MENUE_TASTEN.has(code)) {
-      menueRef.current = Object.assign(createMenue({ aktuell: cfgRef.current.spiel }), { leer: 0 });
+      const verfuegbar = verfuegbareSpiele(SPIELE, cfgRef.current.aus).map((s) => s.id);
+      menueRef.current = Object.assign(createMenue({ aktuell: cfgRef.current.spiel, verfuegbar }), { leer: 0 });
       return;
     }
     g?.key(code);
@@ -305,6 +313,19 @@ export default function App() {
   const theme = themeWahl();
   const setTheme = (t) => { try { localStorage.setItem(THEME_KEY, t); } catch {} location.reload(); };
   const def = SPIELE.find((s) => s.id === cfg.spiel) || SPIELE[0];
+  const verfuegbar = verfuegbareSpiele(SPIELE, cfg.aus);
+  // Mindestens ein Spiel bleibt an
+  const spielUmschalten = (id, an) => setCfg((c) => {
+    const aus = an ? c.aus.filter((x) => x !== id) : [...new Set([...c.aus, id])];
+    return verfuegbareSpiele(SPIELE, aus).length ? { ...c, aus } : c;
+  });
+  const [pdfStatus, setPdfStatus] = useState("");
+  const anleitungLaden = async () => {
+    setPdfStatus("PDF wird erstellt …");
+    const r = await api.anleitungPdf(anleitungHtml({ spiele: verfuegbar, version, menue: cfg.menue, leerlauf: cfg.leerlauf })).catch((e) => ({ ok: false, fehler: e?.message }));
+    setPdfStatus(r?.ok ? (r.datei ? `Gespeichert: ${r.datei}` : "") : r?.abgebrochen ? "" : `PDF nicht möglich${r?.fehler ? `: ${r.fehler}` : "."}`);
+    zumSpiel();
+  };
   const sacnSt = status?.sacn, ndiSt = status?.ndi;
   const uni = (start) => `${start}–${+start + anzahlUniverses(cfg.sacn.fpu) - 1}`;
   const sendet = ausgabeAn && ((cfg.sacn.on && sacnSt?.on && !sacnSt?.err) || (cfg.ndi.on && ndiSt?.on && !ndiSt?.err));
@@ -341,7 +362,7 @@ export default function App() {
         </div>
       </header>
       <nav style={S.nav}>
-        {SPIELE.map((s) => (
+        {verfuegbar.map((s) => (
           <button key={s.id} style={{ ...S.navBtn, ...(cfg.spiel === s.id ? S.navBtnActive : {}) }} onClick={() => set("spiel", s.id)}>
             <span style={{ display: "block", height: 0, fontWeight: 600, overflow: "hidden", visibility: "hidden" }} aria-hidden="true">{s.name}</span>
             {s.name}
@@ -394,7 +415,7 @@ export default function App() {
             </Card>
             <Card title="Highscores">
               <Table head={["Spiel", "Rekord", ""]}>
-                {SPIELE.map((sp) => <tr key={sp.id}>
+                {verfuegbar.map((sp) => <tr key={sp.id}>
                   <td style={td({ fontWeight: 600, whiteSpace: "nowrap" })}>{sp.name}</td>
                   <td style={td()}><Trophy size={12} color={cfg.rekorde[sp.id] ? WARN : MUTED} style={{ verticalAlign: -1, marginRight: 6 }} />{cfg.rekorde[sp.id] || "–"} <span style={{ color: MUTED, fontSize: 11 }}>{sp.rekord}</span></td>
                   <td style={td({ textAlign: "right", width: 1 })}><RekordReset aus={!cfg.rekorde[sp.id]} onReset={() => setCfg((c) => ({ ...c, rekorde: { ...c.rekorde, [sp.id]: 0 } }))} /></td>
@@ -459,6 +480,23 @@ export default function App() {
                   <b style={{ width: 52, textAlign: "right", color: ACCENT, fontSize: 12 }}>{cfg.comStaerke} %</b>
                 </div>
                 <span className="sp-norm-hint">{cfg.comStaerke < 30 ? "Leicht: langsam und reagiert spät." : cfg.comStaerke < 60 ? "Mittel: etwas langsamer als das Original." : cfg.comStaerke === 60 ? "Normal: wie das Original." : cfg.comStaerke < 90 ? "Schwer: schneller und rechnet aus, wo der Ball ankommt." : "Sehr schwer: kaum zu schlagen."}</span></label>
+            </div>
+
+            <div style={{ ...S.section, padding: 16 }}>
+              <div className="sp-section-label">Spiele und Anleitung</div>
+              <span style={S.fieldLabel}>Verfügbare Spiele</span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", margin: "6px 0 4px" }}>
+                {SPIELE.map((sp) => {
+                  const an = !cfg.aus.includes(sp.id), letztes = an && verfuegbar.length === 1;
+                  return <Toggle key={sp.id} checked={an} disabled={letztes} onChange={(v) => spielUmschalten(sp.id, v)} label={sp.name}
+                    title={letztes ? "Ein Spiel muss verfügbar bleiben" : undefined} />;
+                })}
+              </div>
+              <span className="sp-norm-hint">Nur diese Spiele stehen oben in der Leiste, im Spielmenü auf der Matrix und in der Anleitung.</span>
+              <button style={{ ...S.secondaryBtn, marginTop: 12, width: "100%" }} onClick={anleitungLaden}
+                title="Anleitung mit Tastatur- und Gamepad-Belegung für die verfügbaren Spiele als PDF speichern">
+                <FileDown size={14} /> Anleitung als PDF ({verfuegbar.length === 1 ? "1 Spiel" : `${verfuegbar.length} Spiele`})</button>
+              {pdfStatus && <span className="sp-norm-hint" style={{ wordBreak: "break-all" }}>{pdfStatus}</span>}
             </div>
 
             <div style={{ ...S.section, padding: 16 }}>

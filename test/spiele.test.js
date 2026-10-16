@@ -8,6 +8,7 @@ import { SnakeRunde, TICK_RATES, snakeZug, demoZug, FELDER } from "../src/shared
 import { PongRunde, WINNING_SCORE, createPong } from "../src/shared/spiele/pong.js";
 import { createSnake } from "../src/shared/spiele/snake.js";
 import { createMenue } from "../src/shared/spiele/menue.js";
+import { anleitungHtml, verfuegbareSpiele } from "../src/shared/anleitung.js";
 import { MarioWelt, Goomba, Koopa, GROUND_Y, MARIO_SMALL_H, TILE, weltName } from "../src/shared/spiele/mario/welt.js";
 import { genColumn, erzeugeLevel, POLE_COL, CASTLE_COL, TEMPLATE_W, BONUS_RAUS } from "../src/shared/spiele/mario/level.js";
 import { schrift } from "../src/shared/spiele/pixel.js";
@@ -595,4 +596,32 @@ test("Tetris steht in der Spieleliste als Hochkant-Spiel", () => {
   assert.equal(g.state, "playing");
   g.pausieren(true);
   assert.equal(g.state, "paused");
+});
+
+test("Spielmenü zeigt nur die verfügbaren Spiele", () => {
+  const m = createMenue({ aktuell: "pong", verfuegbar: ["snake", "mario"] });
+  assert.equal(m.auswahl, "snake");
+  m.key("ArrowDown");
+  assert.equal(m.auswahl, "mario");
+  m.key("ArrowDown");
+  assert.equal(m.auswahl, "snake");
+  // Leere Auswahl: lieber alle als ein leeres Menü
+  assert.equal(createMenue({ verfuegbar: [] }).auswahl, "snake");
+});
+
+test("Anleitung: jedes Spiel hat Tastatur, Gamepad und Ziel; PDF enthält nur die gewählten", () => {
+  for (const s of SPIELE) {
+    assert.ok(s.tasten?.length && s.gamepad?.length && s.ziel, s.id);
+  }
+  const gewaehlt = verfuegbareSpiele(SPIELE, ["pong"]);
+  assert.deepEqual(gewaehlt.map((s) => s.id), ["snake", "mario", "tetris"]);
+  const html = anleitungHtml({ spiele: gewaehlt, version: "1.0.0", menue: true });
+  assert.match(html, /<h2>Snake<\/h2>/);
+  assert.match(html, /<h2>Mario Jump<\/h2>/);
+  assert.match(html, /<h2>Tetris<\/h2>/);
+  assert.doesNotMatch(html, /Pong/);
+  assert.match(html, /Steuerkreuz/);
+  assert.match(html, /Version 1\.0\.0/);
+  // Text wird maskiert
+  assert.match(anleitungHtml({ spiele: [{ id: "x", name: "<b>", tasten: [] }] }), /&lt;b&gt;/);
 });

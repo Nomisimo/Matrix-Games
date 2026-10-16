@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -46,6 +46,31 @@ ipcMain.handle('netzwerkkarten', () => {
 
 ipcMain.handle('open-external', (_e, url) => {
   if (typeof url === 'string' && /^https?:\/\//i.test(url)) shell.openExternal(url);
+});
+
+/* ── Anleitung als PDF ────────────────────────────────────────────────────
+   Die Oberfläche schickt die fertige HTML-Seite (nur die verfügbaren Spiele). Ein unsichtbares
+   Fenster ohne Skripte rendert sie, printToPDF macht daraus A4, gespeichert wird per Dialog. */
+ipcMain.handle('anleitung-pdf', async (_e, html) => {
+  if (typeof html !== 'string' || html.length > 2_000_000) return { ok: false };
+  const win = new BrowserWindow({ show: false, webPreferences: { javascript: false, contextIsolation: true, nodeIntegration: false } });
+  try {
+    await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+    const pdf = await win.webContents.printToPDF({ pageSize: 'A4', printBackground: true, preferCSSPageSize: true });
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWin, {
+      title: 'Anleitung speichern',
+      defaultPath: path.join(app.getPath('downloads'), 'Matrix-Games-Anleitung.pdf'),
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    });
+    if (canceled || !filePath) return { ok: false, abgebrochen: true };
+    fs.writeFileSync(filePath, pdf);
+    shell.showItemInFolder(filePath);
+    return { ok: true, datei: filePath };
+  } catch (err) {
+    return { ok: false, fehler: err?.message || String(err) };
+  } finally {
+    if (!win.isDestroyed()) win.destroy();
+  }
 });
 
 /* ── Updates wie im Netzwerkplaner ───────────────────────────────────────
