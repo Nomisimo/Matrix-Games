@@ -61,3 +61,17 @@ export function schrift(glyphen, { endLuecke = false, fest = 0 } = {}) {
   };
   return { drawText, textWidth, center: (text) => fdiv(W - textWidth(text), 2) };
 }
+
+/* Hochkant-Spiele (z. B. Tetris) zeichnen auf ein Bild von 24×48 (die beiden Matrizen
+   übereinander) und drehen es für die Ausgabe in den 48×24-Frame.
+   - "rechts": Matrix im Uhrzeigersinn gedreht, oben im Spiel = linke Kante des Frames
+   - "links":  Matrix gegen den Uhrzeigersinn gedreht, oben im Spiel = rechte Kante */
+export function dreheInQuer(hoch, quer, richtung = "rechts") {
+  const hp = hoch.px, qp = quer.px, hw = hoch.w, hh = hoch.h, qw = quer.w;
+  const links = richtung === "links";
+  for (let py = 0; py < hh; py++) for (let px = 0; px < hw; px++) {
+    const qx = links ? hh - 1 - py : py, qy = links ? px : hw - 1 - px;
+    const i = (py * hw + px) * 3, j = (qy * qw + qx) * 3;
+    qp[j] = hp[i]; qp[j + 1] = hp[i + 1]; qp[j + 2] = hp[i + 2];
+  }
+}

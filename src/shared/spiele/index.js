@@ -10,6 +10,7 @@ import { createSnake, createSnakeDemo } from "./snake.js";
 import { createPong, createPongDemo } from "./pong.js";
 import { createMario, FONT as MARIO_FONT } from "./mario/index.js";
 import { createMarioDemo } from "./mario/demo.js";
+import { createTetris, createTetrisDemo } from "./tetris.js";
 export { Bild, W, H } from "./pixel.js";
 
 const FPS = 60;
@@ -25,10 +26,10 @@ const PAUSE_FARBE = [255, 230, 50];
    Pause gilt für alle Spiele gleich: P oder Start am Gamepad. */
 export function mitDemo({ create, demo, starte, startTasten = START }) {
   return ({ ton = () => {}, koennen = () => 1, leerlauf = () => LEERLAUF / FPS, rekord, ...optionen } = {}) => {
-    let modus = "demo", spiel = null, d = demo({ koennen }), leer = 0, ende = 0, pause = false;
+    let modus = "demo", spiel = null, d = demo({ koennen, ...optionen }), leer = 0, ende = 0, pause = false;
     // Was über mehrere Runden gilt (z. B. die Siegesserie bei Pong)
     const sitzung = {};
-    const zurDemo = () => { modus = "demo"; spiel = null; pause = false; d = demo({ koennen }); ton("_stop"); };
+    const zurDemo = () => { modus = "demo"; spiel = null; pause = false; d = demo({ koennen, ...optionen }); ton("_stop"); };
     const pausierbar = () => modus === "spiel" && !["title", "game_over"].includes(spiel.state);
     const setzePause = (p) => {
       if (p === pause || (p && !pausierbar())) return;
@@ -72,8 +73,9 @@ export function mitDemo({ create, demo, starte, startTasten = START }) {
       },
       render(b) {
         if (modus === "demo") return d.render(b, MARIO_FONT);
-        spiel.render(b);
-        if (pause) pauseBild(b);
+        // Hochkant-Spiele zeichnen die Pause selbst, damit „PAUSE“ auf der gedrehten Matrix lesbar ist
+        spiel.render(b, pause);
+        if (pause && !spiel.hochkant) pauseBild(b);
       },
     };
   };
@@ -107,4 +109,9 @@ export const SPIELE = [
     create: mitDemo({ create: createMario, demo: createMarioDemo, starte: (s) => s.key("Enter") }),
     rekord: "Punkte",
     tasten: [["Enter / Leertaste", "Start (aus der Demo)"], ["← / → oder A / D", "Laufen"], ["Leertaste / ↑ / W", "Springen (halten = höher)"], ["Shift / Z / X", "Rennen; als Feuer-Mario Feuerball werfen"], ["↓ / S", "Ducken (groß); auf mancher Röhre: hinein in die Bonuswelt"], ...ALLGEMEIN] },
+  { id: "tetris", name: "Tetris", hochkant: true,
+    create: mitDemo({ create: createTetris, demo: createTetrisDemo, starte: (s) => s.key("Enter") }),
+    rekord: "Punkte",
+    tasten: [["Enter / Leertaste", "Start (aus der Demo)"], ["← / → oder A / D", "Schieben (halten = weiter)"], ["↑ / W / X", "Drehen rechtsrum"], ["Z / Y", "Drehen linksrum"], ["↓ / S", "Schneller fallen"], ["Leertaste", "Fallen lassen (Hard Drop)"], ...ALLGEMEIN],
+    pads: "Bei Tetris: A dreht rechtsrum, B dreht linksrum, Y lässt den Stein fallen, ↓ lässt ihn schneller fallen. Tetris ist ein Hochkant-Spiel: die Matrix steht dafür hochkant (oben im Spiel = linke Kante des Bildes)." },
 ];

@@ -89,10 +89,26 @@ function marioSounds() {
   };
 }
 
+function tetrisSounds() {
+  const ton = (f, d, v, e = [0.01, 0.05, 0.6, 0.3]) => vol(mul(sq(N(d), f), env(N(d), ...e)), v);
+  const arp = (fs, d, v) => vol(cat(fs.map((f) => mul(sq(N(d), f, 0.25), env(N(d), 0.02, 0.04, 0.75, 0.2)))), v);
+  return {
+    move: ton(1200, 0.012, 0.06),
+    rotate: ton(880, 0.03, 0.12),
+    lock: vol(mul(glide(N(0.05), 260, 140), env(N(0.05), 0.01, 0.04, 0.5, 0.5)), 0.22),
+    drop: vol(mul(glide(N(0.08), 400, 90), env(N(0.08), 0.01, 0.04, 0.5, 0.5)), 0.26),
+    line: arp([523, 659, 784], 0.06, 0.22),
+    tetris: arp([523, 659, 784, 1047, 784, 1047, 1319], 0.055, 0.24),
+    level: arp([392, 523, 659, 784, 1047], 0.05, 0.2),
+    over: vol(mul(glide(N(0.9), 440, 70), env(N(0.9), 0.02, 0.1, 0.6, 0.35)), 0.26),
+  };
+}
+
 const KLAENGE = {
   snake: () => ({ eat: beep(880, 55, 0.25, 20), die: chord([130, 98], 480, 0.35, 5) }),
   pong: () => ({ paddle: beep(480, 45, 0.35, 18), wall: beep(260, 30, 0.25, 18), score: beep(110, 450, 0.45, 18) }),
   mario: marioSounds,
+  tetris: tetrisSounds,
 };
 
 export function createTon() {
