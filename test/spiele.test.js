@@ -625,3 +625,13 @@ test("Anleitung: jedes Spiel hat Tastatur, Gamepad und Ziel; PDF enthält nur di
   // Text wird maskiert
   assert.match(anleitungHtml({ spiele: [{ id: "x", name: "<b>", tasten: [] }] }), /&lt;b&gt;/);
 });
+
+test("Tetris zeichnet direkt auf ein Hochkant-Bild, wenn die App eins gibt", () => {
+  const g = createTetris({});
+  g.key("Enter");
+  g.step(new Set());
+  const hoch = new Bild(HW, HH), quer = new Bild();
+  g.render(hoch);
+  g.render(quer);
+  for (let y = 0; y < HH; y++) for (let x = 0; x < HW; x++) assert.deepEqual(quer.get(y, HW - 1 - x), hoch.get(x, y));
+});

@@ -221,6 +221,13 @@ export class TetrisRunde {
 
 // Punkte in höchstens 4 Zeichen (links neben der Vorschau ist Platz für 4 Ziffern)
 export const kurz = (n) => (n < 10000 ? String(n) : n < 1e6 ? `${Math.floor(n / 1000)}K` : `${Math.floor(n / 1e6)}M`);
+/* Zeichnen: Gibt die App schon ein Hochkant-Bild (24×48), wird direkt darauf gezeichnet und die App
+   dreht für die Ausgabe. Bei einem 48×24-Bild dreht Tetris selbst (Richtung über drehung). */
+const zeichne = (b, hoch, drehung, f) => {
+  if (b.w === HW && b.h === HH) return f(b);
+  f(hoch);
+  dreheInQuer(hoch, b, drehung());
+};
 const mitte = (t) => fdiv(HW - FONT.textWidth(t), 2);
 const zentriert = (b, t, y, c) => FONT.drawText(b, t, mitte(t), y, c);
 
@@ -292,7 +299,7 @@ export function createTetrisDemo({ koennen = () => 1, drehung = () => "rechts", 
       }
       if (r.update(new Set()) === "over") pause = 90;
     },
-    render(b) { r.render(hoch, false); dreheInQuer(hoch, b, drehung()); },
+    render(b) { zeichne(b, hoch, drehung, (h) => r.render(h, false)); },
     get runde() { return r; },
   };
 }
@@ -330,36 +337,37 @@ export function createTetris({ ton = () => {}, rekord, drehung = () => "rechts" 
     },
     // pause: Spielbild abgedunkelt mit „PAUSE“ (hochkant, damit es auf der gedrehten Matrix lesbar ist)
     render(b, pause = false) {
-      if (state === "title") {
-        hoch.fill(SCHWARZ);
-        zentriert(hoch, "TETRIS", 8, FARBEN.T);
-        TYPEN.forEach((t, i) => { const [x, y] = [2 + (i % 4) * 5, 20 + fdiv(i, 4) * 6]; for (const [cx, cy] of ZELLEN[t][0]) hoch.set(x + cx, y + cy, FARBEN[t]); });
-        if (fdiv(blink, 30) % 2 === 0) zentriert(hoch, "START", 36, PUNKTE_FARBE);
-      } else if (state === "playing") {
-        game.render(hoch);
-        if (pause) {
-          for (let i = 0; i < hoch.px.length; i++) hoch.px[i] >>= 2;
-          hoch.rect(0, 19, HW, 9, SCHWARZ);
-          zentriert(hoch, "PAUSE", 21, [255, 230, 50]);
+      zeichne(b, hoch, drehung, (h) => {
+        if (state === "title") {
+          h.fill(SCHWARZ);
+          zentriert(h, "TETRIS", 8, FARBEN.T);
+          TYPEN.forEach((t, i) => { const [x, y] = [2 + (i % 4) * 5, 20 + fdiv(i, 4) * 6]; for (const [cx, cy] of ZELLEN[t][0]) h.set(x + cx, y + cy, FARBEN[t]); });
+          if (fdiv(blink, 30) % 2 === 0) zentriert(h, "START", 36, PUNKTE_FARBE);
+        } else if (state === "playing") {
+          game.render(h);
+          if (pause) {
+            for (let i = 0; i < h.px.length; i++) h.px[i] >>= 2;
+            h.rect(0, 19, HW, 9, SCHWARZ);
+            zentriert(h, "PAUSE", 21, [255, 230, 50]);
+          }
+        } else if (ende <= TOPOUT_ZEIT) {
+          // Spielende: das Feld füllt sich von unten grau
+          game.render(h);
+          const reihen = Math.min(20, fdiv(ende, 2));
+          for (let i = 0; i < reihen; i++) h.rect(FX, HH - 1 - (i + 1) * Z, BREITE * Z, Z, GRAU);
+        } else {
+          h.fill(SCHWARZ);
+          const an = fdiv(blink, 40) % 3 < 2;
+          zentriert(h, "GAME", 2, an ? [255, 40, 40] : [120, 20, 20]);
+          zentriert(h, "OVER", 8, an ? [255, 40, 40] : [120, 20, 20]);
+          zentriert(h, "SCORE", 16, [150, 150, 150]);
+          zentriert(h, kurz(game.score), 22, PUNKTE_FARBE);
+          if (neuerRekord) zentriert(h, "NEW", 30, [255, 220, 0]);
+          else zentriert(h, "BEST", 30, [90, 90, 200]);
+          zentriert(h, kurz(Math.max(rekord.get(), game.score)), 36, neuerRekord ? [255, 220, 0] : [90, 90, 200]);
+          zentriert(h, `L${game.level} ${game.lines}`.slice(0, 6), 42, [80, 80, 80]);
         }
-      } else if (ende <= TOPOUT_ZEIT) {
-        // Spielende: das Feld füllt sich von unten grau
-        game.render(hoch);
-        const reihen = Math.min(20, fdiv(ende, 2));
-        for (let i = 0; i < reihen; i++) hoch.rect(FX, HH - 1 - (i + 1) * Z, BREITE * Z, Z, GRAU);
-      } else {
-        hoch.fill(SCHWARZ);
-        const an = fdiv(blink, 40) % 3 < 2;
-        zentriert(hoch, "GAME", 2, an ? [255, 40, 40] : [120, 20, 20]);
-        zentriert(hoch, "OVER", 8, an ? [255, 40, 40] : [120, 20, 20]);
-        zentriert(hoch, "SCORE", 16, [150, 150, 150]);
-        zentriert(hoch, kurz(game.score), 22, PUNKTE_FARBE);
-        if (neuerRekord) zentriert(hoch, "NEW", 30, [255, 220, 0]);
-        else zentriert(hoch, "BEST", 30, [90, 90, 200]);
-        zentriert(hoch, kurz(Math.max(rekord.get(), game.score)), 36, neuerRekord ? [255, 220, 0] : [90, 90, 200]);
-        zentriert(hoch, `L${game.level} ${game.lines}`.slice(0, 6), 42, [80, 80, 80]);
-      }
-      dreheInQuer(hoch, b, drehung());
+      });
     },
   };
 }
