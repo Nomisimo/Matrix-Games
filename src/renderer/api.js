@@ -18,6 +18,9 @@ export const api = {
     setTimeout(() => w.print(), 300);
     return Promise.resolve({ ok: true });
   },
+  // Drehsensor (HTTP-Endpoint im Hauptprozess)
+  drehsensor: (cfg) => (E?.drehsensor ? E.drehsensor(cfg) : Promise.resolve(null)),
+  onDrehsensor: (cb) => (E?.onDrehsensor ? E.onDrehsensor(cb) : () => {}),
   // Updates
   fetchReleases: () => (E?.fetchReleases ? E.fetchReleases() : fetch("https://api.github.com/repos/Nomisimo/Matrix-Games/releases?per_page=20").then((r) => (r.ok ? r.json() : null)).catch(() => null)),
   checkForUpdates: () => (E?.checkForUpdates ? E.checkForUpdates() : Promise.resolve({ auto: false })),

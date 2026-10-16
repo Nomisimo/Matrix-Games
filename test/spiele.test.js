@@ -485,6 +485,8 @@ test("Spielmenü: wählt Spiel und Pong-Modus, Esc führt zurück", () => {
   assert.equal(m.auswahl, "tetris");
   assert.deepEqual(m.key("Enter"), { start: "tetris", taste: "Enter" });
   m.key("ArrowDown");
+  assert.equal(m.auswahl, "drehen");
+  m.key("ArrowDown");
   assert.equal(m.auswahl, "snake");
   assert.deepEqual(m.key("Escape"), { zurueck: true });
   const b = new Bild();
@@ -603,6 +605,8 @@ test("Spielmenü zeigt nur die verfügbaren Spiele", () => {
   assert.equal(m.auswahl, "snake");
   m.key("ArrowDown");
   assert.equal(m.auswahl, "mario");
+  m.key("ArrowDown");
+  assert.equal(m.auswahl, "drehen");   // DREH bleibt immer im Menü
   m.key("ArrowDown");
   assert.equal(m.auswahl, "snake");
   // Leere Auswahl: lieber alle als ein leeres Menü
