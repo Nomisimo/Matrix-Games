@@ -75,6 +75,8 @@ function marioSounds() {
     kick: vol(mul(glide(N(0.065), 880, 440), env(N(0.065), 0.01, 0.03, 0.5, 0.52)), 0.24),
     star: vol(arp([523, 659, 784, 1047], 0.042, [0.01, 0.02, 0.8, 0.12]), 0.22),
     fire: vol(mul(glide(N(0.06), 900, 420), env(N(0.06), 0.01, 0.03, 0.5, 0.5)), 0.2),
+    // Röhre: drei tiefe Stöße
+    pipe: vol(cat([0, 1, 2].map(() => cat([mul(glide(N(0.06), 220, 110), env(N(0.06), 0.01, 0.02, 0.6, 0.4)), new Float32Array(N(0.04))]))), 0.3),
     // Fahne: langer Abwärts-Glissando; Ziel: kurze Fanfare
     flag: vol(mul(glide(N(0.9), 1100, 160), env(N(0.9), 0.01, 0.05, 0.7, 0.2)), 0.18),
     clear: vol(cat([

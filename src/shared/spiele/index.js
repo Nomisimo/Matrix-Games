@@ -64,5 +64,5 @@ export const SPIELE = [
     tasten: [["Enter / Leertaste oder 1", "Start gegen den Computer"], ["2", "Start zu zweit"], ["W / S", "linker Schläger"], ["↑ / ↓", "rechter Schläger (2 Spieler)"], ["Esc", "zurück zur Demo"]] },
   { id: "mario", name: "Mario Jump",
     create: mitDemo({ create: createMario, demo: createMarioDemo, starte: (s) => s.key("Enter") }),
-    tasten: [["Enter / Leertaste", "Start (aus der Demo)"], ["← / → oder A / D", "Laufen"], ["Leertaste / ↑ / W", "Springen (halten = höher)"], ["Shift / Z / X", "Rennen; als Feuer-Mario Feuerball werfen"], ["↓ / S", "Ducken (groß)"], ["Esc", "zurück zur Demo"]] },
+    tasten: [["Enter / Leertaste", "Start (aus der Demo)"], ["← / → oder A / D", "Laufen"], ["Leertaste / ↑ / W", "Springen (halten = höher)"], ["Shift / Z / X", "Rennen; als Feuer-Mario Feuerball werfen"], ["↓ / S", "Ducken (groß); auf mancher Röhre: hinein in die Bonuswelt"], ["Esc", "zurück zur Demo"]] },
 ];

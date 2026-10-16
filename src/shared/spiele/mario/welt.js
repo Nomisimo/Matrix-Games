@@ -3,10 +3,10 @@
    Ganzzahl-Rundungen folgen Python (int() schneidet ab, // rundet ab), damit die
    Kollisionen genau wie im Original greifen. */
 import { W, H, int, fdiv } from "../pixel.js";
-import { LEVEL_H, genColumn, piranhaPipes, BLOCK_INHALT, POLE_COL, CASTLE_COL } from "./level.js";
+import { LEVEL_H, genColumn, levelFuer, POLE_COL, CASTLE_COL, BONUS_GRID, BONUS_W, BONUS_RAUS } from "./level.js";
 import {
   MARIO_SMALL, MARIO_BIG, MARIO_FIRE, GOOMBA, KOOPA, PARATROOPA, PIRANHA, FIREBALL, MUSHROOM, FIRE_FLOWER, COIN, STAR, ONEUP, DEBRIS,
-  TILE_MAP, T_QUEST2, FLAG, drawSprite, flipH, flipV,
+  TILE_MAP, TILE_MAP_UNTEN, T_QUEST2, FLAG, drawSprite, flipH, flipV,
 } from "./sprites.js";
 
 /* ── Konstanten ─────────────────────────────────────────────────────────── */
@@ -18,7 +18,7 @@ const GRAVITY_RISE = 0.28, GRAVITY_FALL = 0.50, GRAVITY_ABORT = 0.58;
 const ACCEL_WALK = 0.06, ACCEL_RUN = 0.09, DECEL = 0.04, DECEL_SKID = 0.07;
 export const SKY = [92, 148, 252], COL_WHITE = [255, 255, 255], COL_SCORE = [255, 220, 0], COL_RED = [255, 60, 60];
 export const SMALL = "small", BIG = "big", FIRE = "fire", DEAD = "dead", GROW = "grow", SHRINK = "shrink";
-const SOLID = new Set("GH?B[]()IN");
+const SOLID = new Set("GH?B[]()INU{}=_");
 const ACTIVATABLE = new Set("?BIN");
 const COYOTE_FRAMES = 6, STAR_DURATION = 480;
 const QUEST_ANIM_SPEED = 30, GEN_AHEAD = W * 3;
@@ -397,6 +397,7 @@ export function spawnDebris(col, row) {
 }
 
 /* ── Spielwelt ──────────────────────────────────────────────────────────── */
+const MAST = [200, 200, 200];
 const overlap = (ax, ay, aw, ah, bx, by, bw, bh) => ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 const hits = (a, e) => { const h = e.hitbox || e; return overlap(a.x, a.y, a.w, a.h, h.x, h.y, h.w, h.h); };
 // Punkte für mehrere Gegner hintereinander ohne Landen (wie im Original)
@@ -404,12 +405,20 @@ const COMBO = [100, 200, 400, 500, 800, 1000, 2000, 4000, 5000, 8000];
 const POLE_X = POLE_COL * TILE + 1, DOOR_X = (CASTLE_COL + 1) * TILE + 2;
 const CAM_MAX = (CASTLE_COL + 4) * TILE + 2 - W;
 const CAM_Y_MIN = -14;   // am Ende stehen Mast und Burg im Bild
+const BURG_MAST_X = CASTLE_COL * TILE + 7, BURG_FLAGGE_MAX = 4, BURG_CAM_Y = -5;
 export const weltName = (n) => `${1 + fdiv(n - 1, 4)}-${((n - 1) % 4) + 1}`;
 
+const neuerSeed = () => Math.floor(Math.random() * 2 ** 31);
+
 export class MarioWelt {
-  constructor(ton = () => {}, welt = 1) { this.ton = ton; this.welt = welt; this.reset(); }
+  // seed: Startwert der erzeugten Karte (ab Welt 2); nach einem verlorenen Leben bleibt die Karte gleich
+  constructor(ton = () => {}, welt = 1, seed = neuerSeed()) {
+    this.ton = ton; this.welt = welt; this.seed = seed; this.level = levelFuer(welt, seed);
+    this.reset();
+  }
   reset(mitnehmen = null) {
     this.tiles = Array.from({ length: LEVEL_H }, () => []);
+    this.inhalt = this.level.inhalt; this.unten = false; this.oben = null; this.roehre = null; this.bonusFertig = false;
     this.levelW = 0;
     this.mario = new Mario(4 * TILE, GROUND_Y - MARIO_SMALL_H, this.ton);
     // Groß oder Feuer bleibt beim Weltwechsel erhalten
@@ -418,15 +427,16 @@ export class MarioWelt {
     this.cameraX = 0; this.cameraY = 0;
     this.score = 0; this.coins = 0; this.lives = 3;
     this.questTick = 0; this.questFrame = 0; this.gameOver = false;
-    this.ziel = null; this.courseClear = false; this.flagY = 1; this.prevRun = false;
+    this.ziel = null; this.courseClear = false; this.flagY = 1; this.burgFlagge = 0; this.prevRun = false;
     this.tempo = Math.min(1.6, 1 + 0.15 * (this.welt - 1));
-    for (const [col, h] of piranhaPipes(this.welt)) this.enemies.push(new Piranha(col, LEVEL_H - 1 - h));
+    for (const [col, h] of this.level.pflanzen) this.enemies.push(new Piranha(col, LEVEL_H - 1 - h));
     this.ensureGenerated(fdiv(W + GEN_AHEAD, TILE));
   }
   ensureGenerated(upTo) {
+    if (this.unten) return;
     while (this.levelW <= upTo) {
       const col = this.levelW;
-      const [colTiles, enemy] = genColumn(col, this.welt);
+      const [colTiles, enemy] = genColumn(col, this.level);
       for (let r = 0; r < LEVEL_H; r++) this.tiles[r].push(colTiles[r]);
       this.levelW++;
       if (enemy === "goomba") this.enemies.push(new Goomba(col * TILE, GROUND_Y - 4, this.tempo));
@@ -446,7 +456,7 @@ export class MarioWelt {
   // Block von unten getroffen: Inhalt freigeben, kurz hochhüpfen, Gegner darauf umwerfen
   activateBlock(col, row) {
     const t = this.getTile(col, row), m = this.mario, sx = col * TILE, sy = row * TILE;
-    const inhalt = BLOCK_INHALT[`${col},${row}`];
+    const inhalt = this.inhalt[`${col},${row}`];
     let bump = true;
     if (t === "?") {
       this.setTile(col, row, "H");
@@ -483,7 +493,8 @@ export class MarioWelt {
     }
   }
 
-  // Zielsequenz: am Mast herunterrutschen, Punkte nach Höhe, in die Burg laufen
+  // Zielsequenz: am Mast herunterrutschen, Punkte nach Höhe, in die Burg laufen,
+  // dann steigt die Fahne über der Burg
   startZiel() {
     const m = this.mario;
     const hoehe = int(m.y + m.h);
@@ -510,15 +521,84 @@ export class MarioWelt {
     } else if (z.phase === "laufen") {
       m.update(this.tiles, { right: true, left: false, jump: false, run: false, duck: false });
       if (m.x >= DOOR_X) { m.hidden = true; z.phase = "burg"; z.t = 0; }
-    } else if (z.phase === "burg" && z.t >= 90) this.courseClear = true;
+    } else if (z.phase === "burg") {
+      // Kamera hebt sich ein Stück, damit die Fahne unter der Anzeige zu sehen ist
+      if (z.t % 3 === 0 && this.cameraY > BURG_CAM_Y) this.cameraY--;
+      if (z.t > 15 && z.t % 8 === 0 && this.burgFlagge < BURG_FLAGGE_MAX) this.burgFlagge++;
+      if (z.t >= 120) this.courseClear = true;
+    }
+    // Bis Mario in der Burg ist, folgt die Kamera ihm wieder nach unten
+    if (z.phase !== "burg") this.kamera();
     for (const it of this.items) it.update(this.tiles);
     this.items = this.items.filter((i) => !i.remove);
+  }
+
+  /* ── Röhren und Bonuswelt ── */
+  // Linke Spalte der Röhre, auf der Mario ganz steht, oder -1
+  roehreUnterMario() {
+    const m = this.mario, row = fdiv(int(m.y + m.h), TILE);
+    let pc = fdiv(int(m.x) + 2, TILE);
+    if (this.getTile(pc, row) === "]") pc--;
+    if (this.getTile(pc, row) !== "[") return -1;
+    return m.x >= pc * TILE && m.x + m.w <= (pc + 2) * TILE ? pc : -1;
+  }
+  // Röhrenkopf (Zeile) einer Röhre im aktuellen Bereich
+  roehrenKopf(pc) {
+    for (let row = 0; row < LEVEL_H; row++) if (this.getTile(pc, row) === "[") return row;
+    return LEVEL_H - 1;
+  }
+  startRoehre(pc) {
+    const m = this.mario;
+    // aus dem Ducken wieder aufrichten, mittig auf die Röhre
+    if ((m.state === BIG || m.state === FIRE) && m.h === 6) { m.h = MARIO_BIG_H; m.y -= MARIO_BIG_H - 6; }
+    m.ducking = false; m.x = pc * TILE + 2; m.vx = 0; m.vy = 0;
+    this.roehre = { art: "runter", kopf: this.roehrenKopf(pc) * TILE };
+    this.ton("pipe");
+  }
+  updateRoehre() {
+    const z = this.roehre, m = this.mario;
+    if (z.art === "runter") {
+      m.y += 0.5;
+      if (m.y >= z.kopf) this.inBonus();
+    } else if (z.art === "rechts") {
+      // in die liegende Röhre der Bonuswelt hineinlaufen
+      m.x += 0.5; m.animTick++;
+      if (m.x >= BONUS_RAUS * TILE + 1) this.ausBonus();
+    } else {
+      // aus der Ausgangsröhre steigen
+      m.y -= 0.5;
+      if (m.y + m.h <= z.kopf) { m.y = z.kopf - m.h; m.onGround = true; this.roehre = null; }
+    }
+  }
+  inBonus() {
+    const m = this.mario;
+    const { tiles, levelW, enemies, items, bumps, used, inhalt, cameraX, cameraY } = this;
+    this.oben = { tiles, levelW, enemies, items, bumps, used, inhalt, cameraX, cameraY };
+    Object.assign(this, {
+      tiles: BONUS_GRID.map((z) => [...z]), levelW: BONUS_W, enemies: [], items: [], bumps: [], used: {}, inhalt: {},
+      cameraX: 0, cameraY: 0, unten: true, roehre: null,
+    });
+    // fällt durch die Öffnung in der Decke herein
+    m.x = TILE + 1; m.y = 0; m.vy = 0; m.facingRight = true;
+  }
+  ausBonus() {
+    const m = this.mario, pc = this.level.bonus.raus;
+    Object.assign(this, this.oben, { oben: null, unten: false, bonusFertig: true });
+    this.ensureGenerated(pc + fdiv(GEN_AHEAD, TILE));
+    // Gegner, die schon hinter der Ausgangsröhre warteten, bleiben; die davor sind weg
+    this.enemies = this.enemies.filter((e) => e instanceof Piranha || e.x > pc * TILE + W / 2);
+    const kopf = this.roehrenKopf(pc) * TILE;
+    m.x = pc * TILE + 2; m.y = kopf; m.vx = 0; m.vy = 0;
+    this.cameraX = Math.min(CAM_MAX, Math.max(0, int(m.x) - 16)); this.cameraY = 0;
+    this.roehre = { art: "hoch", kopf };
+    this.ton("pipe");
   }
 
   update(keys) {
     if (this.gameOver || this.courseClear) return;
     if (++this.questTick >= QUEST_ANIM_SPEED) { this.questTick = 0; this.questFrame ^= 1; }
     if (this.ziel) return this.updateZiel();
+    if (this.roehre) return this.updateRoehre();
     this.ensureGenerated(fdiv(this.cameraX + GEN_AHEAD, TILE));
     const m = this.mario;
 
@@ -533,11 +613,27 @@ export class MarioWelt {
 
     const hit = m.update(this.tiles, keys);
     if (hit) this.activateBlock(...hit);
+    // ↓ auf der Bonus-Röhre: hinein in die Bonuswelt; dort nach rechts in die liegende Röhre: wieder hinaus
+    if (!m.dead && m.onGround && !this.unten && keys.duck && !this.bonusFertig && this.roehreUnterMario() === this.level.bonus.rein) {
+      return this.startRoehre(this.level.bonus.rein);
+    }
+    if (!m.dead && m.onGround && this.unten && keys.right && m.x + m.w >= BONUS_RAUS * TILE) {
+      m.vx = 0; m.facingRight = true; this.roehre = { art: "rechts" }; this.ton("pipe");
+      return;
+    }
+    // Münzen als Kacheln (Bonuswelt) einsammeln
+    if (!m.dead) {
+      for (let row = Math.max(0, fdiv(int(m.y), TILE)); row <= Math.min(LEVEL_H - 1, fdiv(int(m.y + m.h - 1), TILE)); row++) {
+        for (let col = fdiv(int(m.x), TILE); col <= fdiv(int(m.x + m.w - 1), TILE); col++) {
+          if (this.getTile(col, row) === "o") { this.setTile(col, row, " "); this.addCoin(); }
+        }
+      }
+    }
     // Mario bleibt im Bild: die Kamera fährt nur nach rechts
     if (m.x < this.cameraX) { m.x = this.cameraX; if (m.vx < 0) m.vx = 0; }
     if (m.y > H && !m.dead) m.pitDeath();
     // Demo: kein Zielbild, die Strecke beginnt einfach von vorn
-    if (!m.dead && m.x + m.w >= POLE_COL * TILE) { if (this.demo) { this.neuStarten = true; return; } return this.startZiel(); }
+    if (!m.dead && !this.unten && m.x + m.w >= POLE_COL * TILE) { if (this.demo) { this.neuStarten = true; return; } return this.startZiel(); }
 
     for (const b of this.bumps) b.t--;
     this.bumps = this.bumps.filter((b) => b.t > 0);
@@ -595,13 +691,7 @@ export class MarioWelt {
     const purgeItems = this.cameraX - W;
     this.items = this.items.filter((i) => !i.remove && i.x > purgeItems);
 
-    // Kamera: nur nach rechts, am Ende der Strecke stehen bleiben; nach oben sofort folgen, langsam zurück
-    this.cameraX = Math.min(CAM_MAX, Math.max(0, Math.max(this.cameraX, int(m.x) - 16)));
-    const ty = int(m.y) - 3;
-    if (ty < this.cameraY) this.cameraY = ty;
-    else if (this.cameraY < 0) this.cameraY = Math.min(0, this.cameraY + 1);
-    // Hohe Sprünge (von Röhren und Treppen) bleiben im Bild; beim Fallen folgt die Kamera nach unten
-    this.cameraY = Math.min(0, Math.max(this.cameraY, CAM_Y_MIN, int(m.y + m.h) - H + 1));
+    this.kamera();
 
     if (m.deadDone) {
       this.lives--;
@@ -609,39 +699,60 @@ export class MarioWelt {
       else this.resetAfterDeath();
     }
   }
+  // Kamera: nur nach rechts, am Ende der Strecke stehen bleiben; nach oben sofort folgen, langsam zurück.
+  // Steht Mario still auf einem hohen Block, bleibt sie ruhig (sonst springt das Bild jede Frame um 1 px).
+  kamera() {
+    const m = this.mario;
+    const camMax = this.unten ? BONUS_W * TILE - W : CAM_MAX;
+    this.cameraX = Math.min(camMax, Math.max(0, Math.max(this.cameraX, int(m.x) - 16)));
+    const ty = int(m.y) - 3;
+    if (ty < this.cameraY) this.cameraY = ty;
+    else if (ty > this.cameraY && this.cameraY < 0) this.cameraY = Math.min(0, this.cameraY + 1);
+    // Hohe Sprünge (von Röhren und Treppen) bleiben im Bild; beim Fallen folgt die Kamera nach unten
+    this.cameraY = Math.min(0, Math.max(this.cameraY, CAM_Y_MIN, int(m.y + m.h) - H + 1));
+  }
   resetAfterDeath() {
     const { lives, score, coins } = this;
     this.reset();
     Object.assign(this, { lives, score, coins });
   }
-  // Nächste Welt: Punkte, Münzen, Leben und Größe bleiben
+  // Nächste Welt mit neuer Karte: Punkte, Münzen, Leben und Größe bleiben
   naechsteWelt() {
     const { lives, score, coins } = this, st = this.mario.state;
     this.welt++;
+    this.seed = neuerSeed(); this.level = levelFuer(this.welt, this.seed);
     this.reset(st === GROW ? BIG : st === SHRINK ? SMALL : st);
     Object.assign(this, { lives, score, coins });
   }
 
   render(b, font, hud = true) {
-    b.fill(SKY);
-    const cam = this.cameraX, camY = this.cameraY;
+    b.fill(this.unten ? [0, 0, 0] : SKY);
+    const cam = this.cameraX, camY = this.cameraY, kacheln = this.unten ? TILE_MAP_UNTEN : TILE_MAP;
+    // In der Röhre steckt Mario hinter den Kacheln
+    if (this.roehre) this.mario.render(b, cam, camY);
     // Pflanzen hinter den Röhren zeichnen
     for (const e of this.enemies) if (e instanceof Piranha && !e.knocked) e.render(b, cam, camY);
+    // Fahne über der Burg: steigt hinter den Zinnen hervor
+    if (this.burgFlagge > 0 && !this.unten) {
+      const top = 4 - this.burgFlagge, mx = BURG_MAST_X - cam;
+      for (let y = top; y < 4; y++) b.set(mx, y - camY, MAST);
+      drawSprite(b, flipH(FLAG), mx + 1, top - camY);
+    }
     const c0 = fdiv(cam, TILE), c1 = Math.min(this.levelW - 1, fdiv(cam + W, TILE) + 1);
     for (let row = 0; row < LEVEL_H; row++) {
       for (let col = c0; col <= c1; col++) {
         const t = this.tiles[row][col];
         if (t === " ") continue;
-        const sp = t === "?" && this.questFrame ? T_QUEST2 : TILE_MAP[t];
+        const sp = t === "?" && this.questFrame ? T_QUEST2 : kacheln[t];
         const bump = this.bumps.find((u) => u.col === col && u.row === row);
         if (sp) drawSprite(b, sp, col * TILE - cam, row * TILE - camY - (bump && bump.t > 4 ? 1 : 0));
       }
     }
     // Fahne am Mast
-    if (POLE_COL * TILE + 4 > cam) drawSprite(b, FLAG, POLE_X - 3 - cam, this.flagY - camY);
+    if (!this.unten && POLE_COL * TILE + 4 > cam) drawSprite(b, FLAG, POLE_X - 3 - cam, this.flagY - camY);
     for (const it of this.items) it.render(b, cam, camY);
     for (const e of this.enemies) if (!(e instanceof Piranha) || e.knocked) e.render(b, cam, camY);
-    this.mario.render(b, cam, camY);
+    if (!this.roehre) this.mario.render(b, cam, camY);
 
     if (!hud) return;
     // HUD: Punkte links, Münzen, Herz und Leben rechts

@@ -7,7 +7,7 @@ import { createMarioDemo } from "../src/shared/spiele/mario/demo.js";
 import { SnakeRunde, TICK_RATES, snakeZug, demoZug, FELDER } from "../src/shared/spiele/snake.js";
 import { PongRunde, WINNING_SCORE } from "../src/shared/spiele/pong.js";
 import { MarioWelt, Goomba, Koopa, GROUND_Y, MARIO_SMALL_H, TILE, weltName } from "../src/shared/spiele/mario/welt.js";
-import { genColumn, POLE_COL, TEMPLATE_W } from "../src/shared/spiele/mario/level.js";
+import { genColumn, erzeugeLevel, POLE_COL, CASTLE_COL, TEMPLATE_W, BONUS_RAUS } from "../src/shared/spiele/mario/level.js";
 import { schrift } from "../src/shared/spiele/pixel.js";
 import ausgabe from "../src/main/spiele/ausgabe.js";
 
@@ -120,8 +120,56 @@ test("Mario-Level: Grube, Gegner, Mast und Burg, danach nur Boden", () => {
   assert.equal(genColumn(POLE_COL)[0][4], "F");
   assert.equal(genColumn(POLE_COL)[0][2], "|");
   assert.deepEqual(genColumn(250)[0], [" ", " ", " ", " ", " ", "G"]);
-  assert.equal(genColumn(50, 1)[1], null);     // Zusatzgegner erst ab Welt 2
-  assert.equal(genColumn(50, 2)[1], "goomba");
+});
+
+test("Mario-Level: ab Welt 2 neue Karte gleicher Länge mit Mast, Burg und zwei Bonus-Röhren", () => {
+  const a = erzeugeLevel(2, 1), b = erzeugeLevel(2, 2);
+  assert.notDeepEqual(a.grid, b.grid);
+  assert.deepEqual(erzeugeLevel(2, 1).grid, a.grid);          // gleicher Startwert, gleiche Karte
+  for (let seed = 1; seed <= 30; seed++) {
+    const l = erzeugeLevel(2 + (seed % 5), seed);
+    assert.equal(l.grid[0].length, TEMPLATE_W);
+    assert.equal(genColumn(POLE_COL, l)[0][4], "F");
+    assert.equal(l.grid[1][CASTLE_COL], "M");
+    for (const c of [l.bonus.rein, l.bonus.raus]) assert.ok(l.grid.some((row) => row[c] === "["), `keine Röhre in Spalte ${c}`);
+    assert.ok(!l.pflanzen.some(([c]) => c === l.bonus.rein || c === l.bonus.raus));
+    // Gruben höchstens drei Kacheln breit
+    let grube = 0;
+    for (let c = 0; c < TEMPLATE_W; c++) { grube = l.grid[5][c] === " " ? grube + 1 : 0; assert.ok(grube <= 3); }
+  }
+});
+
+test("Mario: nach einem Leben bleibt die Karte, die nächste Welt bekommt eine neue", () => {
+  const w = new MarioWelt(() => {}, 2, 7);
+  const karte = w.level.grid;
+  w.resetAfterDeath();
+  assert.equal(w.level.grid, karte);
+  w.naechsteWelt();
+  assert.equal(w.welt, 3);
+  assert.notDeepEqual(w.level.grid, karte);
+});
+
+test("Mario: durch die Röhre in die Bonuswelt, Münzen sammeln, aus der späteren Röhre wieder heraus", () => {
+  const w = new MarioWelt();
+  w.enemies = [];
+  const pc = w.level.bonus.rein;
+  w.ensureGenerated(pc + 20);
+  w.mario.x = pc * TILE + 2; w.mario.y = w.roehrenKopf(pc) * TILE - w.mario.h; w.cameraX = pc * TILE - 20;
+  w.update(KEINE);
+  let n = 0;
+  while (!w.unten && n++ < 100) w.update({ ...KEINE, duck: true });
+  assert.ok(w.unten, "nicht in der Bonuswelt");
+  while (w.unten && n++ < 600) w.update({ ...KEINE, right: true });
+  assert.ok(!w.unten, "nicht wieder herausgekommen");
+  assert.ok(w.coins >= 9, `nur ${w.coins} Münzen`);
+  while (w.roehre && n++ < 800) w.update(KEINE);
+  assert.ok(Math.abs(w.mario.x - (w.level.bonus.raus * TILE + 2)) < 2);
+  assert.ok(w.mario.y + w.mario.h <= w.roehrenKopf(w.level.bonus.raus) * TILE);
+  // ein zweites Mal geht es nicht hinein
+  w.mario.x = pc * TILE + 2;
+  for (let i = 0; i < 20; i++) w.update({ ...KEINE, duck: true });
+  assert.ok(!w.unten && !w.roehre);
+  assert.equal(BONUS_RAUS, 13);
 });
 
 const KEINE = { left: false, right: false, jump: false, run: false, duck: false };
@@ -173,6 +221,29 @@ test("Mario: am Mast ist die Welt geschafft, danach kommt Welt 1-2", () => {
   assert.equal(weltName(w.welt), "1-2");
   assert.equal(w.score, score);
   assert.ok(!w.courseClear && w.mario.x < 40);
+});
+
+test("Mario: auf hohen Blöcken bleibt die Kamera ruhig", () => {
+  const w = new MarioWelt();
+  w.enemies = [];
+  w.ensureGenerated(100);
+  w.mario.x = 55 * TILE; w.mario.y = TILE - MARIO_SMALL_H - 2; w.cameraX = 200;   // über der Ziegelreihe in Zeile 1
+  for (let i = 0; i < 10; i++) w.update(KEINE);
+  const y = w.cameraY;
+  for (let i = 0; i < 30; i++) { w.update(KEINE); assert.equal(w.cameraY, y, "Kamera wackelt"); }
+});
+
+test("Mario: nach hohem Sprung an den Mast fährt die Kamera zurück, die Burgfahne steigt", () => {
+  const w = new MarioWelt();
+  w.enemies = [];
+  w.ensureGenerated(TEMPLATE_W);
+  w.mario.x = POLE_COL * TILE - 7; w.mario.y = -14; w.cameraX = 690; w.cameraY = -14;
+  let n = 0;
+  while (!(w.ziel && w.ziel.phase === "laufen") && n++ < 500) w.update({ ...KEINE, right: true });
+  assert.equal(w.cameraY, 0, "Boden nicht im Bild, während Mario zur Burg läuft");
+  while (!w.courseClear && n++ < 2000) w.update(KEINE);
+  assert.ok(w.courseClear);
+  assert.ok(w.burgFlagge > 0, "Fahne über der Burg ist nicht gestiegen");
 });
 
 /* ── Ausgabe: sACN wie sacn_output.py ───────────────────────────────────── */
