@@ -4,10 +4,10 @@
    bei Pong ←/→ den Modus (1P gegen den Computer, 2P zu zweit), Enter/A/Start startet,
    Esc/Select geht zurück zur Demo. key() gibt zurück, was passieren soll:
    { start: id, taste } (Spiel wählen und mit dieser Taste aus der Demo starten) oder
-   { zurueck: true }. */
+   { zurueck: true }. verfuegbar (Liste von ids) blendet abgewählte Spiele aus. */
 import { FONT } from "./mario/index.js";
 
-const EINTRAEGE = [
+const ALLE = [
   { id: "snake", name: "SNAKE", farbe: [0, 255, 80] },
   { id: "pong", name: "PONG", farbe: [255, 50, 180] },
   { id: "mario", name: "MARIO", farbe: [255, 70, 50] },
@@ -16,7 +16,9 @@ const OK = new Set(["Enter", "NumpadEnter", "Space", "Pause", "Digit1", "Numpad1
 const ZEILEN = [2, 10, 18];
 const dunkel = ([r, g, b]) => [r >> 2, g >> 2, b >> 2];
 
-export function createMenue({ aktuell = "snake" } = {}) {
+export function createMenue({ aktuell = "snake", verfuegbar } = {}) {
+  const gewaehlt = verfuegbar ? ALLE.filter((e) => verfuegbar.includes(e.id)) : ALLE;
+  const EINTRAEGE = gewaehlt.length ? gewaehlt : ALLE;
   let idx = Math.max(0, EINTRAEGE.findIndex((e) => e.id === aktuell)), modus = 1, tick = 0;
   const start = (zwei) => {
     const e = EINTRAEGE[idx];
@@ -40,7 +42,8 @@ export function createMenue({ aktuell = "snake" } = {}) {
     render(b) {
       b.fill([0, 0, 0]);
       EINTRAEGE.forEach((e, i) => {
-        const an = i === idx, y = ZEILEN[i];
+        // Weniger als drei Spiele: Zeilen senkrecht mittig
+        const an = i === idx, y = ZEILEN[i] + Math.max(0, ZEILEN.length - EINTRAEGE.length) * 4;
         const text = e.id === "pong" ? `${e.name} ${modus}P` : e.name;
         FONT.drawText(b, text, 10, y, an ? e.farbe : dunkel(e.farbe));
         // Pfeil vor der Auswahl blinkt langsam
