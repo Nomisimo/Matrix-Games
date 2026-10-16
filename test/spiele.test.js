@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { SPIELE, Bild, LEERLAUF } from "../src/shared/spiele/index.js";
 import { createMarioDemo } from "../src/shared/spiele/mario/demo.js";
-import { SnakeRunde, TICK_RATES, snakeZug, demoZug, FELDER } from "../src/shared/spiele/snake.js";
+import { SnakeRunde, TICK_RATES, snakeZug, demoZug, FELDER, Vorhersage, zufall } from "../src/shared/spiele/snake.js";
 import { PongRunde, WINNING_SCORE, createPong } from "../src/shared/spiele/pong.js";
 import { createSnake } from "../src/shared/spiele/snake.js";
 import { createMenue } from "../src/shared/spiele/menue.js";
@@ -75,6 +75,83 @@ test("Snake: kein direktes Umkehren, Schwanz darf nachrücken", () => {
   r.dir = [0, -1]; r.pending = [0, 1]; r.food = null;
   assert.equal(r.tick(), false);
   assert.equal(TICK_RATES[0], 0.2);
+});
+
+/* ── Snake: Eingabe-Vorhersage ─────────────────────────────────────────── */
+const DT = 1 / 60;
+const vhRunde = (seed = 7) => {
+  const z = zufall(seed), t = [];
+  const g = new SnakeRunde(() => {}, z.rnd);
+  g.food = null;
+  return { g, vh: new Vorhersage(g, z, (n) => t.push(n)), t };
+};
+const laufen = (vh, sek, lat) => { let r = null; for (let i = 0; i < Math.round(sek * 60) && !r; i++) r = vh.schritt(DT, lat); return r; };
+
+test("Vorhersage aus: Taste wirkt wie bisher beim nächsten Schritt", () => {
+  const { g, vh } = vhRunde();
+  laufen(vh, 0.5, 0);
+  const vorher = g.head.slice();
+  vh.eingabe(0, -1, 0);
+  assert.deepEqual(g.head, vorher);          // nichts zurückgerechnet
+  laufen(vh, 0.21, 0);
+  assert.equal(g.head[0], vorher[0]);
+  assert.ok(g.head[1] < vorher[1]);
+});
+
+test("Vorhersage: Taste gilt für das Bild von vor der Verzögerung", () => {
+  // Zwei gleiche Runden: eine biegt sofort ab, die andere 300 ms später mit 300 ms Ausgleich
+  const a = vhRunde(3), b = vhRunde(3);
+  laufen(a.vh, 1.0, 0); a.vh.eingabe(0, 1, 0); laufen(a.vh, 0.3, 0);
+  laufen(b.vh, 1.0, 0.3); laufen(b.vh, 0.3, 0.3); b.vh.eingabe(0, 1, 0.3);
+  assert.deepEqual(b.g.body, a.g.body);
+  assert.deepEqual(b.g.dir, [0, 1]);
+});
+
+test("Vorhersage: nur gedrückte Tasten, keine Umkehr, Reihenfolge bleibt", () => {
+  const { g, vh } = vhRunde();
+  laufen(vh, 1.0, 0.2);
+  const vorher = g.body.map((p) => p.slice());
+  vh.eingabe(-1, 0, 0.2);                    // Umkehr: wird ignoriert
+  assert.deepEqual(g.body, vorher);
+  vh.eingabe(0, -1, 0.2); vh.eingabe(1, 0, 0.2);   // hoch, dann rechts
+  laufen(vh, 0.6, 0.2);
+  assert.deepEqual(g.dir, [1, 0]);
+  assert.ok(g.head[1] < vorher[0][1]);       // ist erst nach oben gefahren
+});
+
+test("Vorhersage: Schlange stirbt erst nach der Verzögerung, rechtzeitige Taste rettet", () => {
+  const { g, vh, t } = vhRunde();
+  // Bis kurz vor die rechte Wand fahren
+  let r = null, n = 0;
+  while (g.head[0] < 46 && n++ < 2000) r = vh.schritt(DT, 0.25);
+  assert.equal(r, null);
+  let tot = false;
+  for (let i = 0; i < 20 && !tot; i++) { vh.schritt(DT, 0.25); tot = vh.tot !== null; }
+  assert.ok(tot, "an die Wand gestoßen");
+  assert.equal(vh.schritt(DT, 0.25), null);  // noch nicht vorbei
+  assert.ok(!t.includes("die"));
+  vh.eingabe(0, -1, 0.25);                   // für das gesehene Bild noch rechtzeitig
+  assert.equal(vh.tot, null);
+  assert.equal(laufen(vh, 0.5, 0.25), null);
+  assert.deepEqual(g.dir, [0, -1]);          // abgebogen, ohne die Wand zu treffen
+  assert.ok(g.head[0] >= 45);
+  // ohne Taste ist nach der Verzögerung Schluss
+  const b = vhRunde();
+  n = 0; while (b.g.head[0] < 46 && n++ < 2000) b.vh.schritt(DT, 0.25);
+  assert.equal(laufen(b.vh, 1, 0.25), "dead");
+  assert.deepEqual(b.t, ["die"]);
+});
+
+test("Vorhersage: Futter liegt nach dem Zurückrechnen gleich", () => {
+  // Gleicher Zufall: dieselbe Runde mit und ohne Zurückrechnen hat dasselbe Futter
+  const a = vhRunde(11), b = vhRunde(11);
+  a.g.spawnFood(); b.g.spawnFood();
+  a.g.food = b.g.food = [a.g.head[0] + 2, a.g.head[1] - 4];
+  laufen(a.vh, 0.5, 0); a.vh.eingabe(0, -1, 0); laufen(a.vh, 1.5, 0);
+  laufen(b.vh, 0.5, 0.3); laufen(b.vh, 0.3, 0.3); b.vh.eingabe(0, -1, 0.3); laufen(b.vh, 1.2, 0.3);
+  assert.equal(b.g.score, a.g.score);
+  assert.ok(a.g.score > 0);
+  assert.deepEqual(b.g.food, a.g.food);
 });
 
 /* ── Pong ───────────────────────────────────────────────────────────────── */

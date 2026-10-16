@@ -114,6 +114,113 @@ export class SnakeRunde {
   }
 }
 
+/* ── Eingabe-Vorhersage: gleicht die Verzögerung von NDI/DMX aus ─────────────
+   Auf der LED-Wand sieht man das Spiel um „latenz“ Sekunden zu spät. Ein Tastendruck gilt
+   deshalb für das Bild, das man in dem Moment gesehen hat: Das Spiel spult bis vor den Schritt
+   zurück, der danach kam, setzt dort die Richtung und rechnet bis jetzt neu. Ausgeführt wird
+   nur, was wirklich gedrückt wurde. Stirbt die Schlange, bleibt sie noch „latenz“ lang stehen;
+   kommt in dieser Zeit eine rettende Taste für ein früheres Bild, geht es weiter. */
+const VERLAUF_MAX = 1.0;                  // so weit (s) kann höchstens zurückgespult werden
+
+// Zufall mit Zustand, damit nach dem Zurückspulen dasselbe Futter wieder an derselben Stelle liegt
+export function zufall(seed = (Math.random() * 2 ** 32) >>> 0) {
+  const z = { s: seed >>> 0 };
+  z.rnd = () => {
+    z.s = (z.s + 0x6d2b79f5) >>> 0;
+    let t = z.s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  return z;
+}
+
+const FELDER_STAND = ["body", "dir", "pending", "growth", "score", "foodCount", "level", "tickRate", "accum", "food"];
+
+export class Vorhersage {
+  // runde: SnakeRunde, z: zufall() der Runde (oder null), ton: echter Ton
+  constructor(runde, z = null, ton = () => {}) {
+    this.g = runde; this.z = z; this.ton = ton;
+    this.stumm = false;
+    // „die“ erst beim endgültigen Ende, „eat“ nicht beim Nachrechnen
+    runde.ton = (n) => { if (!this.stumm && n !== "die") ton(n); };
+    this.t = 0; this.verlauf = []; this.letzte = this.letzterSchritt = -Infinity; this.tot = null;
+    this.offen = false; this.warte = null;   // Taste für den nächsten Schritt gesetzt / zweite wartet
+  }
+  sichern(tf) {
+    const g = this.g, s = { tf, zs: this.z?.s };
+    for (const f of FELDER_STAND) s[f] = f === "body" ? g.body.slice() : g[f];
+    return s;
+  }
+  laden(s) {
+    for (const f of FELDER_STAND) this.g[f] = f === "body" ? s.body.slice() : s[f];
+    if (this.z) this.z.s = s.zs;
+  }
+  // Rückspulen nur bis zu diesem Zeitpunkt (z. B. nach einer Pause)
+  leeren() { this.verlauf = []; this.letzte = this.letzterSchritt = this.t; }
+  // Spielzeit um dt weiterrechnen; true, wenn die Schlange dabei stirbt
+  laufen(dt) {
+    const g = this.g;
+    g.accum += dt; this.t += dt;
+    while (g.accum >= g.tickRate) {
+      g.accum -= g.tickRate;
+      const tz = this.t - g.accum;        // genauer Zeitpunkt dieses Schritts
+      this.verlauf.push({ t: tz, s: this.sichern(this.t) });
+      if (this.offen) { this.letzterSchritt = tz; this.offen = false; }
+      if (g.tick()) { this.tot = tz; return true; }
+      if (this.warte) {                   // zweite Taste vor diesem Schritt: gilt ab dem nächsten
+        const [x, y] = this.warte, p = g.pending;
+        this.warte = null;
+        g.setDir(x, y);
+        this.offen = g.pending !== p;
+      }
+    }
+    return false;
+  }
+  // Ein Bild (dt Sekunden). Gibt "dead" zurück, wenn die Runde endgültig vorbei ist.
+  schritt(dt, latenz = 0) {
+    this.g.blink += dt;
+    if (this.tot === null) this.laufen(dt);
+    else this.t += dt;
+    const alt = this.verlauf.findIndex((v) => v.t > this.t - VERLAUF_MAX);
+    if (alt > 0) this.verlauf.splice(0, alt);
+    if (this.tot !== null && this.t - this.tot >= latenz) { this.ton("die"); return "dead"; }
+    return null;
+  }
+  eingabe(dx, dy, latenz = 0) {
+    const g = this.g;
+    // Eingaben bleiben in ihrer Reihenfolge: nie vor die vorige Taste zurück
+    const ziel = Math.max(this.t - Math.min(latenz, VERLAUF_MAX), this.letzte);
+    this.letzte = ziel;
+    // Zwei Tasten für dasselbe Bild (z. B. schnell hoch, dann rechts): die zweite gilt einen Schritt später
+    const ab = Math.max(ziel, this.letzterSchritt);
+    const i = this.verlauf.findIndex((v) => v.t > ab);
+    if (i < 0) {                          // Bild ist noch das aktuelle: wie ohne Ausgleich
+      if (this.tot !== null) return;
+      if (this.offen) { this.warte = [dx, dy]; return; }
+      const p = g.pending;
+      g.setDir(dx, dy);
+      this.offen = g.pending !== p;
+      return;
+    }
+    const v = this.verlauf[i], jetzt = this.t, punkte = g.score;
+    // Umkehr oder schon gesetzte Richtung: ändert nichts, also nichts nachrechnen
+    if (dx === -v.s.dir[0] && dy === -v.s.dir[1]) return;
+    if (dx === v.s.pending[0] && dy === v.s.pending[1]) return;
+    // Bild von damals wiederherstellen, Richtung setzen, bis jetzt nachrechnen
+    this.letzterSchritt = v.t;
+    this.laden(v.s);
+    g.setDir(dx, dy);
+    v.s.pending = g.pending;              // weitere Tasten für dasselbe Bild bauen darauf auf
+    this.verlauf.length = i + 1;
+    this.tot = null; this.stumm = true;
+    if (g.tick()) this.tot = v.t;
+    else { this.t = v.s.tf; this.laufen(jetzt - v.s.tf); }
+    this.t = jetzt; this.stumm = false;
+    if (g.score > punkte) this.ton("eat");
+  }
+}
+
 /* ── Demo: die Schlange spielt selbst ──────────────────────────────────────
    Zwei Fahrweisen, über „Können“ (0–100 %) einstellbar:
    - gering: kürzester Weg zum Futter (Breitensuche) mit Platzprüfung und Fehlern
@@ -256,10 +363,17 @@ export function createSnakeDemo({ koennen = () => 1 } = {}) {
 }
 
 // rekord: { get, set } für den gespeicherten Highscore (ohne: nur für diese Sitzung)
-export function createSnake({ ton = () => {}, rekord } = {}) {
-  let state = "title", game = null, blink = 0, neuerRekord = false, eigener = 0;
+// vorhersage(): Verzögerung der Ausgabe in Millisekunden (0 = aus), darf sich jederzeit ändern
+export function createSnake({ ton = () => {}, rekord, vorhersage = () => 0 } = {}) {
+  let state = "title", game = null, vh = null, blink = 0, neuerRekord = false, eigener = 0;
   rekord ||= { get: () => eigener, set: (n) => { eigener = n; } };
-  const neu = () => { game = new SnakeRunde(ton); state = "playing"; };
+  const latenz = () => Math.max(0, +vorhersage() || 0) / 1000;
+  const neu = () => {
+    const z = zufall();
+    game = new SnakeRunde(ton, z.rnd);
+    vh = new Vorhersage(game, z, ton);
+    state = "playing";
+  };
   return {
     id: "snake",
     get state() { return state; },
@@ -267,9 +381,12 @@ export function createSnake({ ton = () => {}, rekord } = {}) {
     get spiel() { return game; },
     key(code) {
       if (state === "title") { if (code === "Space") neu(); }
-      else if (state === "playing") { if (code === "Escape" || code === "KeyP") state = "paused"; else game.handleKey(code); }
-      else if (state === "paused") {
-        if (["Escape", "Space", "KeyP"].includes(code)) state = "playing";
+      else if (state === "playing") {
+        if (code === "Escape" || code === "KeyP") state = "paused";
+        else if (DIRS[code]) vh.eingabe(...DIRS[code], latenz());
+      } else if (state === "paused") {
+        // Nach der Pause nicht in die Zeit davor zurückspulen
+        if (["Escape", "Space", "KeyP"].includes(code)) { state = "playing"; vh.leeren(); }
         else if (code === "KeyQ") state = "title";
       } else if (state === "game_over") {
         if (code === "Space") neu();
@@ -277,7 +394,7 @@ export function createSnake({ ton = () => {}, rekord } = {}) {
       }
     },
     step() {
-      if (state === "playing" && game.update(DT) === "dead") {
+      if (state === "playing" && vh.schritt(DT, latenz()) === "dead") {
         neuerRekord = game.score > 0 && game.score > rekord.get();
         if (neuerRekord) rekord.set(game.score);
         state = "game_over";
