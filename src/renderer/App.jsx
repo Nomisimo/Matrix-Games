@@ -1,26 +1,29 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { S, ACCENT, OK, ERR, WARN, SUB, MUTED, TEXT2, INPUT, LINE, THEME_KEY, themeWahl } from "../shared/constants.js";
 import { SPIELE, Bild, W, H } from "../shared/spiele/index.js";
+import { createMenue } from "../shared/spiele/menue.js";
 import { api, isElectron } from "./api.js";
 import { createTon } from "./spiele/ton.js";
 import { Toggle, Dot, Card, Table, td, Hint, Modal } from "./ui.jsx";
 import { CHANGELOG, compareVersions, neuesteVersion, istBeta, RELEASES_URL } from "../shared/version.js";
-import { Volume2, VolumeX, RotateCcw, RefreshCw, TriangleAlert, Gamepad2, Sun, Moon, Monitor, Power, Keyboard, ArrowUpCircle, Download } from "lucide-react";
+import { Volume2, VolumeX, RotateCcw, RefreshCw, TriangleAlert, Gamepad2, Sun, Moon, Monitor, Power, Keyboard, ArrowUpCircle, Download, Pause, Play, Trophy } from "lucide-react";
 import APP_ICON_SVG from "../../assets/app-icon/icon.svg";
 const APP_ICON = `data:image/svg+xml;utf8,${encodeURIComponent(APP_ICON_SVG)}`;
 
 const LS = "matrixgames_einstellungen";
 // Vorgaben wie im Snake-Original auf der echten Matrix (Universe 29 und 33, 144 Pixel je Universe)
-const STANDARD = { spiel: "snake", ton: true, schwarz: false, koennen: 80, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games" } };
+// menue: Spielmenü auf der Matrix; leerlauf: Sekunden ohne Eingabe bis zur Demo (0 = nie);
+// comStaerke: Pong-Computer in %; rekorde: Highscore je Spiel
+const STANDARD = { spiel: "snake", ton: true, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, rekorde: {}, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games" } };
 const laden = () => {
   try {
     const v = JSON.parse(localStorage.getItem(LS) || "null");
-    return v ? { ...STANDARD, ...v, sacn: { ...STANDARD.sacn, ...v.sacn }, ndi: { ...STANDARD.ndi, ...v.ndi } } : STANDARD;
+    return v ? { ...STANDARD, ...v, rekorde: { ...v.rekorde }, sacn: { ...STANDARD.sacn, ...v.sacn }, ndi: { ...STANDARD.ndi, ...v.ndi } } : STANDARD;
   } catch { return STANDARD; }
 };
 
 const STEP = 1000 / 60;
-const ZUSTAND = { demo: "Demo (spielt selbst)", title: "Titelbild", intro: "Weltanzeige", playing: "läuft", paused: "Pause", point_scored: "Punkt", clear: "Ziel erreicht", game_over: "Game Over" };
+const ZUSTAND = { menue: "Spielmenü", demo: "Demo (spielt selbst)", title: "Titelbild", intro: "Weltanzeige", playing: "läuft", paused: "Pause", point_scored: "Punkt", clear: "Ziel erreicht", game_over: "Game Over" };
 // Tasten, die im Spiel nicht scrollen oder Knöpfe auslösen sollen
 const SPIELTASTEN = new Set(["Space", "Enter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Escape"]);
 // Nur Felder, in die man tippt, behalten die Tastatur. Schalter, Knöpfe und Auswahllisten geben sie
@@ -28,11 +31,16 @@ const SPIELTASTEN = new Set(["Space", "Enter", "ArrowUp", "ArrowDown", "ArrowLef
 const TIPPFELD = new Set(["text", "number", "search", "email", "url", "password"]);
 const istEingabe = (el) => el && ((el.tagName === "INPUT" && TIPPFELD.has(el.type)) || el.tagName === "TEXTAREA" || el.isContentEditable);
 const SCHWARZ = new Uint8Array(W * H * 3);
+// Diese Tasten öffnen aus der Demo das Spielmenü (wenn es eingeschaltet ist)
+const MENUE_TASTEN = new Set(["Enter", "NumpadEnter", "Space", "Pause", "Digit1", "Digit2", "Numpad1", "Numpad2"]);
 
 /* Gamepads (Standard-Belegung): Steuerkreuz oder linker Stick = Pfeile, A = Leertaste,
-   B/X = Shift (Rennen, Feuer), Start = Enter, Select = Esc. Bei Pong steuert Pad 1 den linken
-   Schläger (W/S) und Pad 2 den rechten (↑/↓). */
-function padTasten(spiel) {
+   B/X = Shift (Rennen, Feuer), Start = Pause (startet aus der Demo), Select = Esc. Bei Pong
+   steuert Pad 1 den linken Schläger (W/S) und Pad 2 den rechten (↑/↓). Im Startbild (Demo oder
+   Spielmenü) melden A und Start an Pad 2 „2“: Pong startet dann zu zweit. */
+const LEERLAUF_STUFEN = [10, 15, 20, 30, 45, 60, 90, 120, 180, 300, 0];
+const leerlaufText = (s) => (s ? (s < 60 ? `${s} s` : `${s / 60} min`) : "nie");
+function padTasten(spiel, imStart) {
   const out = new Set();
   let pads = [];
   try { pads = [...(navigator.getGamepads?.() || [])].filter(Boolean); } catch { return out; }
@@ -47,9 +55,12 @@ function padTasten(spiel) {
       if (hoch) out.add("ArrowUp"); if (runter) out.add("ArrowDown");
     }
     if (links) out.add("ArrowLeft"); if (rechts) out.add("ArrowRight");
-    if (b(0)) out.add("Space");
+    if (imStart && i > 0 && (spiel === "pong" || imStart === "menue")) { if (b(0) || b(9)) out.add("Digit2"); }
+    else {
+      if (b(0)) out.add("Space");
+      if (b(9)) out.add("Pause");
+    }
     if (b(1) || b(2)) out.add("ShiftLeft");
-    if (b(9)) out.add("Enter");
     if (b(8)) out.add("Escape");
   });
   return out;
@@ -97,6 +108,8 @@ export default function App() {
   const gameRef = useRef(null), tonRef = useRef(null), held = useRef(new Set()), zustandRef = useRef("demo");
   const ausgabeAn = (cfg.sacn.on || cfg.ndi.on) && isElectron;
   const ausgabeRef = useRef(ausgabeAn), schwarzRef = useRef(cfg.schwarz), spielRef = useRef(cfg.spiel), koennenRef = useRef(cfg.koennen);
+  const cfgRef = useRef(cfg), menueRef = useRef(null), startNachWechsel = useRef(null);
+  cfgRef.current = cfg;
   ausgabeRef.current = ausgabeAn;
   schwarzRef.current = cfg.schwarz;
   koennenRef.current = cfg.koennen;
@@ -151,15 +164,51 @@ export default function App() {
   useEffect(() => { tonRef.current = createTon(); return () => tonRef.current.close(); }, []);
   useEffect(() => { tonRef.current.setAn(cfg.ton); }, [cfg.ton]);
 
-  // Spiel anlegen (bei Wechsel neu)
+  // Spiel anlegen (bei Wechsel neu). Kam der Wechsel aus dem Spielmenü, startet die Runde gleich.
   const neu = useCallback(() => {
     tonRef.current?.stopAlle();
     const def = SPIELE.find((s) => s.id === cfg.spiel) || SPIELE[0];
-    gameRef.current = def.create({ ton: (name) => tonRef.current?.play(def.id, name), koennen: () => (koennenRef.current ?? 80) / 100 });
+    gameRef.current = def.create({
+      ton: (name) => tonRef.current?.play(def.id, name),
+      koennen: () => (koennenRef.current ?? 80) / 100,
+      leerlauf: () => cfgRef.current.leerlauf,
+      comStaerke: () => (cfgRef.current.comStaerke ?? 60) / 100,
+      rekord: {
+        get: () => cfgRef.current.rekorde?.[def.id] || 0,
+        set: (n) => setCfg((c) => ({ ...c, rekorde: { ...c.rekorde, [def.id]: n } })),
+      },
+    });
+    menueRef.current = null;
     held.current.clear();
+    const taste = startNachWechsel.current;
+    startNachWechsel.current = null;
+    if (taste) gameRef.current.key(taste);
     document.activeElement?.blur?.();
   }, [cfg.spiel]);
   useEffect(() => { neu(); }, [neu]);
+
+  /* Jeder Tastendruck (Tastatur und Gamepad) läuft hier durch: ist das Spielmenü an, öffnet der
+     Start aus der Demo erst das Menü auf der Matrix, das dann das Spiel wählt und startet. */
+  const taste = useCallback((code) => {
+    const g = gameRef.current, m = menueRef.current;
+    if (m) {
+      const r = m.key(code);
+      if (r?.zurueck) menueRef.current = null;
+      else if (r?.start) {
+        menueRef.current = null;
+        if (r.start === cfgRef.current.spiel) g?.key(r.taste);
+        else { startNachWechsel.current = r.taste; setCfg((c) => ({ ...c, spiel: r.start })); }
+      }
+      return;
+    }
+    if (cfgRef.current.menue && g?.state === "demo" && MENUE_TASTEN.has(code)) {
+      menueRef.current = Object.assign(createMenue({ aktuell: cfgRef.current.spiel }), { leer: 0 });
+      return;
+    }
+    g?.key(code);
+  }, []);
+  const tasteRef = useRef(taste);
+  tasteRef.current = taste;
 
   // Spielschleife: feste 60 Schritte je Sekunde per Timer, damit sACN/NDI gleichmäßig senden, auch bei
   // minimiertem Fenster (der Hauptprozess schaltet dafür die Drosselung ab). Gezeichnet wird getrennt
@@ -174,19 +223,31 @@ export default function App() {
       const g = gameRef.current;
       if (!g) return;
       // Gamepad: neu gedrückte Tasten wie Tastendrücke melden, gehaltene mitgeben
-      const pad = padTasten(spielRef.current);
-      for (const c of pad) if (!padVorher.has(c)) g.key(c);
+      const pad = padTasten(spielRef.current, menueRef.current ? "menue" : g.state === "demo");
+      for (const c of pad) if (!padVorher.has(c)) tasteRef.current(c);
       padVorher = pad;
       let gehalten = held.current;
       if (pad.size) { gehalten = new Set(held.current); for (const c of pad) gehalten.add(c); }
       // Der Timer tickt alle 4 ms: knapp vor der Zeit zählt schon, sonst schwankt der Abstand zwischen 16 und 20 ms
       let schritte = 0;
-      while (acc >= STEP - 2 && schritte < 5) { g.step(gehalten); acc -= STEP; schritte++; }
+      const m = menueRef.current;
+      while (acc >= STEP - 2 && schritte < 5) {
+        if (m) {
+          // Spielmenü: nach der eingestellten Zeit ohne Eingabe wieder die Demo
+          m.step();
+          if (gehalten.size) m.leer = 0;
+          const grenze = (cfgRef.current.leerlauf || 0) * 60;
+          if (grenze > 0 && ++m.leer > grenze) menueRef.current = null;
+        } else gameRef.current.step(gehalten);
+        acc -= STEP; schritte++;
+      }
       if (!schritte) return;
-      g.render(bild);
+      const jetzt = menueRef.current || gameRef.current;
+      jetzt.render(bild);
       if (ausgabeRef.current) api.frame(schwarzRef.current ? SCHWARZ : bild.px);
       neu = true;
-      if (g.state !== zustandRef.current) { zustandRef.current = g.state; setZustand(g.state); }
+      const st = menueRef.current ? "menue" : gameRef.current.state;
+      if (st !== zustandRef.current) { zustandRef.current = st; setZustand(st); }
     };
     const zeichne = () => {
       raf = requestAnimationFrame(zeichne);
@@ -218,7 +279,7 @@ export default function App() {
       const el = document.activeElement;
       if (el && el !== document.body) el.blur?.();
       if (SPIELTASTEN.has(e.code)) e.preventDefault();
-      if (!e.repeat) gameRef.current?.key(e.code);
+      if (!e.repeat) { tasteRef.current(e.code); if (menueRef.current) menueRef.current.leer = 0; }
       held.current.add(e.code);
     };
     const up = (e) => { held.current.delete(e.code); if (e.code === "Space" && !istEingabe(e.target)) e.preventDefault(); };
@@ -243,6 +304,8 @@ export default function App() {
   const uni = (start) => `${start}–${+start + anzahlUniverses(cfg.sacn.fpu) - 1}`;
   const sendet = ausgabeAn && ((cfg.sacn.on && sacnSt?.on && !sacnSt?.err) || (cfg.ndi.on && ndiSt?.on && !ndiSt?.err));
   const zumSpiel = () => document.activeElement?.blur?.();
+  const imSpiel = !["demo", "menue", "title", "game_over"].includes(zustand);
+  const pauseUmschalten = () => { gameRef.current?.pausieren?.(); zumSpiel(); };
 
   return (
     <div style={S.app}>
@@ -261,6 +324,9 @@ export default function App() {
           title={cfg.schwarz ? "Bild wieder auf die Matrix geben" : "Matrix dunkel schalten: sACN und NDI senden Schwarz, das Spiel läuft weiter"}>
           <Power size={14} /> {cfg.schwarz ? "Matrix aus" : "Matrix an"}</button>
         <button style={S.ghostBtn} onClick={() => set("ton", !cfg.ton)} title={cfg.ton ? "Ton aus" : "Ton an"}>{cfg.ton ? <Volume2 size={14} /> : <VolumeX size={14} />} Ton</button>
+        <button style={{ ...S.ghostBtn, ...(zustand === "paused" ? { background: WARN, color: "#fff", borderColor: WARN } : {}), opacity: imSpiel ? 1 : 0.5, cursor: imSpiel ? "pointer" : "default" }} disabled={!imSpiel} onClick={pauseUmschalten}
+          title={zustand === "paused" ? "Weiterspielen (P, Start am Gamepad)" : "Spiel anhalten (P, Start am Gamepad)"}>
+          {zustand === "paused" ? <Play size={14} /> : <Pause size={14} />} {zustand === "paused" ? "Weiter" : "Pause"}</button>
         <button style={S.ghostBtn} onClick={neu} title="Runde beenden, zurück zur Demo"><RotateCcw size={14} /> Demo</button>
         <div style={{ display: "inline-flex", border: `1px solid ${LINE}`, borderRadius: 6, overflow: "hidden" }} title="Erscheinungsbild">
           {THEMES.map(([k, l, Ic]) => (
@@ -295,8 +361,8 @@ export default function App() {
             </div>
             <Card title="Demo (Startbild)">
               <p style={{ ...S.hint, margin: "0 0 10px" }}>
-                Jedes Spiel spielt sich selbst, bis jemand mit Enter oder der Leertaste startet. Nach dem Spiel, mit Esc
-                oder nach 30 Sekunden ohne Taste läuft wieder die Demo.
+                Jedes Spiel spielt sich selbst, bis jemand mit Enter, der Leertaste oder am Gamepad startet. Nach dem Spiel,
+                mit Esc oder {cfg.leerlauf ? `nach ${leerlaufText(cfg.leerlauf)} ohne Eingabe` : "(Leerlauf abgeschaltet)"} läuft wieder die Demo.
               </p>
               <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: TEXT2 }}>
                 <span style={{ whiteSpace: "nowrap" }}>Können der Demo</span>
@@ -315,6 +381,19 @@ export default function App() {
             <Card title="Tasten">
               <Table head={["Taste", "Funktion"]}>
                 {def.tasten.map(([k, f]) => <tr key={k}><td style={td({ fontWeight: 600, whiteSpace: "nowrap" })}>{k}</td><td style={td()}>{f}</td></tr>)}
+              </Table>
+              <p style={{ ...S.hint, margin: "10px 0 0" }}>
+                <b>Gamepad:</b> Steuerkreuz oder linker Stick bewegt, A = Leertaste (Start, Springen), B/X = Rennen und Feuer,
+                Start = Pause (und Start aus der Demo), Select = zurück zur Demo. {def.pads || ""}
+              </p>
+            </Card>
+            <Card title="Highscores">
+              <Table head={["Spiel", "Rekord", ""]}>
+                {SPIELE.map((sp) => <tr key={sp.id}>
+                  <td style={td({ fontWeight: 600, whiteSpace: "nowrap" })}>{sp.name}</td>
+                  <td style={td()}><Trophy size={12} color={cfg.rekorde[sp.id] ? WARN : MUTED} style={{ verticalAlign: -1, marginRight: 6 }} />{cfg.rekorde[sp.id] || "–"} <span style={{ color: MUTED, fontSize: 11 }}>{sp.rekord}</span></td>
+                  <td style={td({ textAlign: "right", width: 1 })}><RekordReset aus={!cfg.rekorde[sp.id]} onReset={() => setCfg((c) => ({ ...c, rekorde: { ...c.rekorde, [sp.id]: 0 } }))} /></td>
+                </tr>)}
               </Table>
             </Card>
           </div>
@@ -359,6 +438,25 @@ export default function App() {
             </div>
 
             <div style={{ ...S.section, padding: 16 }}>
+              <div className="sp-section-label">App-Einstellungen</div>
+              <Toggle checked={cfg.menue} onChange={(v) => set("menue", v)} label="Spielmenü auf der Matrix" />
+              <span className="sp-norm-hint">Der Start aus der Demo öffnet erst ein Menü auf der Matrix: ↑/↓ wählt das Spiel, bei Pong ←/→ 1P oder 2P, Enter oder A startet. So lässt sich am Gamepad zwischen den Spielen wechseln.</span>
+              <label style={{ ...S.field, marginTop: 14 }}><span style={S.fieldLabel}>Demo übernimmt nach</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <input type="range" min={0} max={LEERLAUF_STUFEN.length - 1} step={1} value={Math.max(0, LEERLAUF_STUFEN.indexOf(cfg.leerlauf))}
+                    onChange={(e) => set("leerlauf", LEERLAUF_STUFEN[+e.target.value])} style={{ flex: 1, accentColor: ACCENT }} />
+                  <b style={{ width: 52, textAlign: "right", color: ACCENT, fontSize: 12 }}>{leerlaufText(cfg.leerlauf)}</b>
+                </div>
+                <span className="sp-norm-hint">ohne Eingabe im Spiel oder Menü; in der Pause läuft die Zeit nicht.</span></label>
+              <label style={{ ...S.field, marginTop: 10 }}><span style={S.fieldLabel}>Pong: Stärke des Computers</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <input type="range" min={0} max={100} step={5} value={cfg.comStaerke} onChange={(e) => set("comStaerke", +e.target.value)} style={{ flex: 1, accentColor: ACCENT }} />
+                  <b style={{ width: 52, textAlign: "right", color: ACCENT, fontSize: 12 }}>{cfg.comStaerke} %</b>
+                </div>
+                <span className="sp-norm-hint">{cfg.comStaerke < 30 ? "Leicht: langsam und reagiert spät." : cfg.comStaerke < 60 ? "Mittel: etwas langsamer als das Original." : cfg.comStaerke === 60 ? "Normal: wie das Original." : cfg.comStaerke < 90 ? "Schwer: schneller und rechnet aus, wo der Ball ankommt." : "Sehr schwer: kaum zu schlagen."}</span></label>
+            </div>
+
+            <div style={{ ...S.section, padding: 16 }}>
               <div className="sp-section-label">Live-Ansicht</div>
               <canvas ref={matrixRef} width={24 * 7 * 2 + 18} height={24 * 7} style={{ width: "100%", display: "block", borderRadius: 6, background: INPUT, border: `1px solid ${ACCENT}` }} />
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: MUTED, marginTop: 6 }}>
@@ -395,6 +493,15 @@ function NdiName({ value, onChange }) {
   useEffect(() => setV(value), [value]);
   const fertig = () => { const n = v.trim() || "Matrix Games"; setV(n); if (n !== value) onChange(n); };
   return <input style={S.inputSm} value={v} onChange={(e) => setV(e.target.value)} onBlur={fertig} />;
+}
+
+// Zurücksetzen mit Rückfrage: der erste Klick fragt „Sicher?“, der zweite setzt den Rekord auf 0
+function RekordReset({ aus, onReset }) {
+  const [frage, setFrage] = useState(false);
+  useEffect(() => { if (!frage) return; const t = setTimeout(() => setFrage(false), 3000); return () => clearTimeout(t); }, [frage]);
+  return <button style={{ ...S.smallBtn, ...(frage ? { background: ERR, color: "#fff", borderColor: ERR } : {}), opacity: aus ? 0.5 : 1 }} disabled={aus}
+    onClick={(e) => { e.currentTarget.blur(); if (frage) { setFrage(false); onReset(); } else setFrage(true); }}
+    title="Highscore zurücksetzen"><RotateCcw size={11} /> {frage ? "Sicher?" : "Zurücksetzen"}</button>;
 }
 
 const Zeile = ({ ok, text }) => (

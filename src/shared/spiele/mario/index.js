@@ -46,8 +46,9 @@ export const marioKeys = (held) => ({
 
 const INTRO = 150, CLEAR = 240;
 
-export function createMario({ ton = () => {} } = {}) {
-  let state = "title", game = null, tick = 0, timer = 0;
+// rekord: { get, set } für den gespeicherten Highscore
+export function createMario({ ton = () => {}, rekord } = {}) {
+  let state = "title", game = null, tick = 0, timer = 0, neuerRekord = false;
   const intro = () => { state = "intro"; timer = INTRO; ton("_stop"); };
   const start = () => { game = new MarioWelt(ton); tick = 0; intro(); };
   const naechste = () => { game.naechsteWelt(); intro(); };
@@ -69,7 +70,11 @@ export function createMario({ ton = () => {} } = {}) {
       } else if (state === "playing") {
         const lives = game.lives;
         game.update(marioKeys(held));
-        if (game.gameOver) { state = "game_over"; tick = 0; }
+        if (game.gameOver) {
+          state = "game_over"; tick = 0;
+          neuerRekord = !!rekord && game.score > 0 && game.score > rekord.get();
+          if (neuerRekord) rekord.set(game.score);
+        }
         else if (game.courseClear) { state = "clear"; timer = CLEAR; }
         // Nach einem verlorenen Leben: Weltanzeige mit den übrigen Leben, dann geht es weiter
         else if (game.lives < lives) intro();
@@ -102,7 +107,11 @@ export function createMario({ ton = () => {} } = {}) {
         b.fill(SKY);
         centered(b, "GAME OVER", ZEILEN[0], COL_RED);
         centered(b, String(game.score).padStart(6, "0"), ZEILEN[1], COL_SCORE);
+        // Unten im Wechsel: „PRESS ENTER“ und der Rekord
+        const best = rekord?.get() || 0;
         if (blink) centered(b, "PRESS ENTER", ZEILEN[2], COL_WHITE);
+        else if (neuerRekord) centered(b, "NEW BEST!", ZEILEN[2], COL_GREEN);
+        else if (best) centered(b, "BEST " + String(best).padStart(6, "0"), ZEILEN[2], COL_SCORE);
       }
     },
   };
