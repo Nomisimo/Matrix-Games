@@ -106,5 +106,5 @@ export const SPIELE = [
   { id: "mario", name: "Mario Jump",
     create: mitDemo({ create: createMario, demo: createMarioDemo, starte: (s) => s.key("Enter") }),
     rekord: "Punkte",
-    tasten: [["Enter / Leertaste", "Start (aus der Demo)"], ["← / → oder A / D", "Laufen"], ["Leertaste / ↑ / W", "Springen (halten = höher)"], ["Shift / Z / X", "Rennen; als Feuer-Mario Feuerball werfen"], ["↓ / S", "Ducken (groß)"], ...ALLGEMEIN] },
+    tasten: [["Enter / Leertaste", "Start (aus der Demo)"], ["← / → oder A / D", "Laufen"], ["Leertaste / ↑ / W", "Springen (halten = höher)"], ["Shift / Z / X", "Rennen; als Feuer-Mario Feuerball werfen"], ["↓ / S", "Ducken (groß); auf mancher Röhre: hinein in die Bonuswelt"], ...ALLGEMEIN] },
 ];
