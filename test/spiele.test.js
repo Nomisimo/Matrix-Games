@@ -482,6 +482,9 @@ test("Spielmenü: wählt Spiel und Pong-Modus, Esc führt zurück", () => {
   assert.equal(m.auswahl, "mario");
   assert.deepEqual(m.key("Pause"), { start: "mario", taste: "Enter" });
   m.key("ArrowDown");
+  assert.equal(m.auswahl, "tetris");
+  assert.deepEqual(m.key("Enter"), { start: "tetris", taste: "Enter" });
+  m.key("ArrowDown");
   assert.equal(m.auswahl, "snake");
   assert.deepEqual(m.key("Escape"), { zurueck: true });
   const b = new Bild();
@@ -490,6 +493,109 @@ test("Spielmenü: wählt Spiel und Pong-Modus, Esc führt zurück", () => {
   // Controller 2 startet Pong zu zweit, auch wenn 1P gewählt ist
   const m2 = createMenue({ aktuell: "pong" });
   assert.deepEqual(m2.key("Digit2"), { start: "pong", taste: "Digit2" });
+});
+
+/* ── Tetris ─────────────────────────────────────────────────────────────── */
+import { TetrisRunde, ZELLEN, BREITE, HOEHE, LINIEN_PUNKTE, besteAblage, createTetrisDemo, createTetris, HW, HH } from "../src/shared/spiele/tetris.js";
+import { dreheInQuer } from "../src/shared/spiele/pixel.js";
+
+test("Tetris: jede Drehung hat vier Felder, vier Drehungen ergeben wieder die Ausgangslage", () => {
+  for (const [t, rots] of Object.entries(ZELLEN)) {
+    assert.equal(rots.length, 4);
+    for (const z of rots) assert.equal(z.length, 4, t);
+  }
+  const r = new TetrisRunde(() => {}, () => 0.5);
+  r.stein = { typ: "T", rot: 0, x: 4, y: 10 };
+  const vorher = JSON.stringify(r.zellen());
+  for (let i = 0; i < 4; i++) assert.ok(r.drehe(1));
+  assert.equal(JSON.stringify(r.zellen()), vorher);
+});
+
+test("Tetris: Drehen an der Wand springt nach SRS zur Seite", () => {
+  const r = new TetrisRunde(() => {}, () => 0.5);
+  // senkrechtes I ganz rechts: Drehen geht nur mit Wandsprung nach links
+  r.stein = { typ: "I", rot: 1, x: 7, y: 8 };
+  assert.ok(r.zellen().every(([x]) => x === 9));
+  assert.ok(r.drehe(1));
+  assert.ok(r.zellen().every(([x]) => x >= 0 && x < BREITE));
+});
+
+test("Tetris: volle Reihen verschwinden, Punkte wie NES", () => {
+  const t = [];
+  const r = new TetrisRunde((n) => t.push(n), () => 0.5);
+  // Unten vier Reihen bis auf Spalte 0 füllen, dann ein senkrechtes I hinein
+  for (let y = HOEHE - 4; y < HOEHE; y++) for (let x = 1; x < BREITE; x++) r.feld[y][x] = "O";
+  r.stein = { typ: "I", rot: 1, x: -2, y: 2 };
+  assert.ok(r.passt(r.stein));
+  r.hardDrop();
+  assert.ok(t.includes("tetris"));
+  for (let i = 0; i < 30; i++) r.update(new Set());
+  assert.equal(r.lines, 4);
+  assert.ok(r.feld.every((row) => row.every((c) => !c)));
+  assert.ok(r.score >= LINIEN_PUNKTE[4]);
+});
+
+test("Tetris: Stein liegt nach dem Lock-Delay fest, Stapel bis oben beendet das Spiel", () => {
+  const r = new TetrisRunde(() => {}, () => 0.3);
+  const nr = r.nr;
+  for (let i = 0; i < 60 * 60 && r.nr === nr; i++) r.update(new Set(["ArrowDown"]));
+  assert.ok(r.nr > nr, "nächster Stein ist da");
+  let over = null;
+  for (let i = 0; i < 500 && !over; i++) { r.hardDrop(); over = r.update(new Set()); }
+  assert.equal(over, "over");
+});
+
+test("Tetris: Demo mit vollem Können räumt Reihen ab und stapelt nicht bis oben", () => {
+  let seed = 3;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const d = createTetrisDemo({ koennen: () => 1, rnd });
+  const erste = d.runde;
+  for (let i = 0; i < 60 * 180; i++) d.step();
+  assert.equal(d.runde, erste, "keine neue Runde (nicht verloren)");
+  assert.ok(d.runde.lines >= 20, `Reihen: ${d.runde.lines}`);
+});
+
+test("Tetris: beste Ablage füllt eine Lücke", () => {
+  const r = new TetrisRunde(() => {}, () => 0.5);
+  for (let x = 0; x < BREITE; x++) if (x < 4 || x > 7) r.feld[HOEHE - 1][x] = "Z";
+  r.stein = { typ: "I", rot: 0, x: 3, y: 0 };
+  const p = besteAblage(r, 1, () => 0.5);
+  assert.deepEqual([p.rot % 2, p.x], [0, 4]);
+});
+
+test("Tetris: Hochkant-Bild wird je nach Richtung gedreht ausgegeben", () => {
+  const hoch = new Bild(HW, HH), quer = new Bild();
+  hoch.set(0, 0, [9, 9, 9]);          // oben links im Spiel
+  dreheInQuer(hoch, quer, "rechts");
+  assert.deepEqual(quer.get(0, 23), [9, 9, 9]);
+  quer.fill([0, 0, 0]);
+  dreheInQuer(hoch, quer, "links");
+  assert.deepEqual(quer.get(47, 0), [9, 9, 9]);
+});
+
+test("Tetris: Spiel startet, Game Over zeigt Punkte und speichert den Rekord", () => {
+  let best = 0;
+  const g = createTetris({ rekord: { get: () => best, set: (n) => { best = n; } } });
+  g.key("Enter");
+  assert.equal(g.state, "playing");
+  for (let i = 0; i < 2000 && g.state === "playing"; i++) { g.key("Space"); g.step(new Set()); }
+  assert.equal(g.state, "game_over");
+  assert.equal(best, g.score);
+  const b = new Bild();
+  for (let i = 0; i < 60; i++) { g.step(new Set()); g.render(b); }
+  assert.ok(b.px.some((v) => v > 0));
+  g.key("KeyX");
+  assert.equal(g.state, "playing");
+});
+
+test("Tetris steht in der Spieleliste als Hochkant-Spiel", () => {
+  const def = SPIELE.find((s) => s.id === "tetris");
+  assert.ok(def?.hochkant);
+  const g = def.create({});
+  g.key("Enter");
+  assert.equal(g.state, "playing");
+  g.pausieren(true);
+  assert.equal(g.state, "paused");
 });
 
 test("Spielmenü zeigt nur die verfügbaren Spiele", () => {
@@ -508,13 +614,24 @@ test("Anleitung: jedes Spiel hat Tastatur, Gamepad und Ziel; PDF enthält nur di
     assert.ok(s.tasten?.length && s.gamepad?.length && s.ziel, s.id);
   }
   const gewaehlt = verfuegbareSpiele(SPIELE, ["pong"]);
-  assert.deepEqual(gewaehlt.map((s) => s.id), ["snake", "mario"]);
+  assert.deepEqual(gewaehlt.map((s) => s.id), ["snake", "mario", "tetris"]);
   const html = anleitungHtml({ spiele: gewaehlt, version: "1.0.0", menue: true });
   assert.match(html, /<h2>Snake<\/h2>/);
   assert.match(html, /<h2>Mario Jump<\/h2>/);
+  assert.match(html, /<h2>Tetris<\/h2>/);
   assert.doesNotMatch(html, /Pong/);
   assert.match(html, /Steuerkreuz/);
   assert.match(html, /Version 1\.0\.0/);
   // Text wird maskiert
   assert.match(anleitungHtml({ spiele: [{ id: "x", name: "<b>", tasten: [] }] }), /&lt;b&gt;/);
+});
+
+test("Tetris zeichnet direkt auf ein Hochkant-Bild, wenn die App eins gibt", () => {
+  const g = createTetris({});
+  g.key("Enter");
+  g.step(new Set());
+  const hoch = new Bild(HW, HH), quer = new Bild();
+  g.render(hoch);
+  g.render(quer);
+  for (let y = 0; y < HH; y++) for (let x = 0; x < HW; x++) assert.deepEqual(quer.get(y, HW - 1 - x), hoch.get(x, y));
 });

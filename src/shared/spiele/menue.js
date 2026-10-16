@@ -11,6 +11,7 @@ const ALLE = [
   { id: "snake", name: "SNAKE", farbe: [0, 255, 80] },
   { id: "pong", name: "PONG", farbe: [255, 50, 180] },
   { id: "mario", name: "MARIO", farbe: [255, 70, 50] },
+  { id: "tetris", name: "TETRIS", farbe: [190, 60, 255] },
 ];
 const OK = new Set(["Enter", "NumpadEnter", "Space", "Pause", "Digit1", "Numpad1"]);
 const ZEILEN = [2, 10, 18];
@@ -41,9 +42,12 @@ export function createMenue({ aktuell = "snake", verfuegbar } = {}) {
     step() { tick++; },
     render(b) {
       b.fill([0, 0, 0]);
-      EINTRAEGE.forEach((e, i) => {
-        // Weniger als drei Spiele: Zeilen senkrecht mittig
-        const an = i === idx, y = ZEILEN[i] + Math.max(0, ZEILEN.length - EINTRAEGE.length) * 4;
+      // Drei Zeilen passen auf die Matrix; bei mehr Spielen läuft die Liste mit der Auswahl mit,
+      // bei weniger stehen die Zeilen senkrecht mittig
+      const erste = Math.max(0, Math.min(idx - 1, EINTRAEGE.length - ZEILEN.length));
+      const versatz = Math.max(0, ZEILEN.length - EINTRAEGE.length) * 4;
+      EINTRAEGE.slice(erste, erste + ZEILEN.length).forEach((e, j) => {
+        const i = erste + j, an = i === idx, y = ZEILEN[j] + versatz;
         const text = e.id === "pong" ? `${e.name} ${modus}P` : e.name;
         FONT.drawText(b, text, 10, y, an ? e.farbe : dunkel(e.farbe));
         // Pfeil vor der Auswahl blinkt langsam

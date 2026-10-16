@@ -4,10 +4,11 @@ A collection of matrix-themed LED games for two 24×24 LED matrices (48×24 canv
 
 ## Desktop app (Electron)
 
-Snake, Pong and Mario Jump in one app, built with the same architecture and design as the [Netzwerkplaner](https://github.com/Nomisimo/Netzwerkplaner) (Electron, React, esbuild), with a green accent colour.
+Snake, Pong, Mario Jump and Tetris in one app, built with the same architecture and design as the [Netzwerkplaner](https://github.com/Nomisimo/Netzwerkplaner) (Electron, React, esbuild), with a green accent colour.
 
 - Pick the game in the top bar; keys are listed under the game.
 - **Demo / start screen:** every game opens as a text-free demo that plays itself. Enter or Space starts a round; after game over, on Esc, or after 30 s without input it returns to the demo. The **Können der Demo** slider (0–100 %) sets how well Snake and Pong play: at 100 % the snake follows a Hamiltonian cycle and fills the whole board, Mario walks the course endlessly at one speed.
+- **Tetris** is a portrait game: the two matrices stand on top of each other (24×48). The board has 10×20 cells of 2×2 pixels, the score is top left, the next piece top right, a faint ghost shows where the piece lands. SRS rotation with wall kicks, 7-bag, NES gravity and scoring, half a second lock delay, level up every 10 lines. Keys: ←/→ move, ↑/W/X rotate right, Z/Y rotate left, ↓ soft drop, Space hard drop; gamepad A rotates right, B/X left, Y hard drop. The game draws in portrait and turns the picture into the 48×24 frame (top of the game = left edge of the frame by default, option `drehung: "links"` for the other way). The demo places every piece by rating height, holes and bumpiness; the skill slider makes it worse and slower.
 - **sACN (E1.31):** start universe per matrix (default 29 and 33), pixels per universe (default 144 = 9 tiles of 4×4), network card to send from. Same tile mapping as `matrix-snake/sacn_output.py`.
 - **NDI:** 480×240 BGRA stream at 60 fps (every pixel 10×10). Needs the [NDI Runtime](https://ndi.video/tools/); it is loaded with `koffi`, the same way the Python version uses ctypes.
 - **Live view:** both matrices drawn exactly as the frame goes out on the network.
@@ -29,7 +30,7 @@ npm run dist:win   # .exe installer (NSIS, x64)
 src/main/          Electron main process; spiele/ausgabe.js = sACN and NDI sender
 src/preload/       IPC bridge (contextBridge)
 src/renderer/      React UI (App.jsx), sound (spiele/ton.js)
-src/shared/spiele/ game logic without UI: snake.js, pong.js, mario/
+src/shared/spiele/ game logic without UI: snake.js, pong.js, mario/, tetris.js
 test/              unit tests (node:test)
 ```
 

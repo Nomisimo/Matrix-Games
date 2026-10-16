@@ -38,7 +38,8 @@ const MENUE_TASTEN = new Set(["Enter", "NumpadEnter", "Space", "Pause", "Digit1"
 /* Gamepads (Standard-Belegung): Steuerkreuz oder linker Stick = Pfeile, A = Leertaste,
    B/X = Shift (Rennen, Feuer), Start = Pause (startet aus der Demo), Select = Esc. Bei Pong
    steuert Pad 1 den linken Schläger (W/S) und Pad 2 den rechten (↑/↓). Im Startbild (Demo oder
-   Spielmenü) melden A und Start an Pad 2 „2“: Pong startet dann zu zweit. */
+   Spielmenü) melden A und Start an Pad 2 „2“: Pong startet dann zu zweit. Bei Tetris dreht A
+   rechtsrum, B/X linksrum, Y lässt den Stein fallen. */
 const LEERLAUF_STUFEN = [10, 15, 20, 30, 45, 60, 90, 120, 180, 300, 0];
 const leerlaufText = (s) => (s ? (s < 60 ? `${s} s` : `${s / 60} min`) : "nie");
 function padTasten(spiel, imStart) {
@@ -57,11 +58,15 @@ function padTasten(spiel, imStart) {
     }
     if (links) out.add("ArrowLeft"); if (rechts) out.add("ArrowRight");
     if (imStart && i > 0 && (spiel === "pong" || imStart === "menue")) { if (b(0) || b(9)) out.add("Digit2"); }
-    else {
+    else if (spiel === "tetris" && !imStart) {
+      // Tetris: A dreht rechtsrum, B/X linksrum, Y lässt fallen
+      if (b(0)) out.add("KeyX"); if (b(1) || b(2)) out.add("KeyZ"); if (b(3)) out.add("Space");
+      if (b(9)) out.add("Pause");
+    } else {
       if (b(0)) out.add("Space");
       if (b(9)) out.add("Pause");
     }
-    if (b(1) || b(2)) out.add("ShiftLeft");
+    if ((b(1) || b(2)) && spiel !== "tetris") out.add("ShiftLeft");
     if (b(8)) out.add("Escape");
   });
   return out;
@@ -393,10 +398,10 @@ export default function App() {
               </label>
               <span className="sp-norm-hint">
                 {cfg.koennen >= 80
-                  ? "Snake fährt einen Rundweg über alle Felder und füllt das Feld ganz, Pong hält fast jeden Ball."
+                  ? "Snake fährt einen Rundweg über alle Felder und füllt das Feld ganz, Pong hält fast jeden Ball, Tetris räumt schnell und fast endlos ab."
                   : cfg.koennen >= 40
-                    ? "Snake nimmt den kurzen Weg zum Futter und verfährt sich ab und zu, Pong lässt öfter einen Ball durch."
-                    : "Snake macht viele Fehler und beißt sich schnell selbst, Pong verliert schnell Punkte."}
+                    ? "Snake nimmt den kurzen Weg zum Futter und verfährt sich ab und zu, Pong lässt öfter einen Ball durch, Tetris legt ab und zu einen Stein schlecht."
+                    : "Snake macht viele Fehler und beißt sich schnell selbst, Pong verliert schnell Punkte, Tetris stapelt sich schnell bis oben."}
               </span>
             </Card>
             <Card title="Tasten">
