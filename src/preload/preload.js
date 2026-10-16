@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   frame:          (px) => ipcRenderer.send('spiele-frame', px),
   anleitungPdf:   (html) => ipcRenderer.invoke('anleitung-pdf', html),
   onStatus:       (cb) => { const h = (_, msg) => cb(msg); ipcRenderer.on('spiele-status', h); return () => ipcRenderer.removeListener('spiele-status', h); },
+  drehsensor:     (cfg) => ipcRenderer.invoke('drehsensor', cfg),
+  onDrehsensor:   (cb) => { const h = (_, msg) => cb(msg); ipcRenderer.on('drehsensor-status', h); return () => ipcRenderer.removeListener('drehsensor-status', h); },
   // Updates (wie im Netzwerkplaner)
   fetchReleases:  () => ipcRenderer.invoke('fetch-releases'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),

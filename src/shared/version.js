@@ -6,6 +6,20 @@ export const REPO = "Nomisimo/Matrix-Games";
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 
 export const CHANGELOG = {
+  "1.0.0-beta.4": [
+    "Neues Spiel Tetris: hochkant über beide Matrizen, mit Demo, Schatten-Stein, nächstem Stein und Gamepad-Steuerung",
+    "Matrix drehen: Hochkant-Spiele drehen die Wand um 90°, einstellbar ob links- oder rechtsrum, auch im Spielmenü (DREH); Testbild zum Ausrichten",
+    "Drehsensor: optionaler HTTP-Endpoint in den Einstellungen; steht die Wand falsch für das gewählte Spiel, zeigt die Matrix, wie sie gedreht werden muss",
+    "Einstellungen: wählbar, welche Spiele verfügbar sind (Leiste, Spielmenü und Anleitung zeigen nur diese)",
+    "Anleitung als PDF mit Zielen, Tipps, Tastatur- und Gamepad-Belegung für die gewählten Spiele",
+    "Alle Spiele: Pause mit P oder Start am Gamepad, Highscore je Spiel mit Reset-Knopf",
+    "Spielmenü auf der Matrix (in den Einstellungen einschaltbar), um zwischen den Spielen zu wechseln",
+    "Einstellbar, nach wie vielen Sekunden ohne Eingabe die Demo übernimmt",
+    "Pong: zwei Controller (je einer pro Seite) und einstellbare Stärke des Computers",
+    "Snake: Verzögerung von NDI/DMX ausgleichen, per Regler; es wird nur ausgeführt, was wirklich gedrückt wurde",
+    "Mario: ruhige Kamera auf hohen Blöcken, Zielszene bis in die Burg, jede Runde eine neue Karte, Bonuswelt in den Röhren",
+    "Die Seite bekommt beim Start sicher den Tastatur-Fokus",
+  ],
   "1.0.0-beta.3": [
     "Demo: Mario geht statt zu rennen, das Tempo bleibt immer gleich und die Strecke läuft endlos weiter (kein Zielbild, kein Rundenende)",
     "Demo: Snake fährt einen Rundweg über alle Felder und füllt das Feld zu 100 %, ohne sich einzusperren",

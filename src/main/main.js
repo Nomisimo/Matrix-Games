@@ -166,7 +166,9 @@ ipcMain.handle('install-update', (_e, url) => shell.openExternal(/^https:\/\/git
 
 /* ── Ausgabe an die LED-Matrix (sACN, NDI) ─────────────────────────────── */
 const ausgabe = require('./spiele/ausgabe').register(ipcMain, () => mainWin);
-app.on('before-quit', () => ausgabe.stopAll());
+// Drehsensor: meldet per HTTP, ob die Wand quer oder hochkant steht
+const drehsensor = require('./spiele/drehsensor').register(ipcMain, () => mainWin);
+app.on('before-quit', () => { ausgabe.stopAll(); drehsensor.stop(); });
 
 /* ── Start, Einzelinstanz ──────────────────────────────────────────────── */
 if (!app.requestSingleInstanceLock()) {

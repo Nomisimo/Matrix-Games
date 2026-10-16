@@ -1,5 +1,6 @@
 /* ── Spiele: Pixel-Leinwand und Bitmap-Schrift ─────────────────────────────
-   Alle Spiele zeichnen auf eine 48×24-Leinwand (zwei LED-Matrizen à 24×24).
+   Alle Spiele zeichnen auf eine 48×24-Leinwand (zwei LED-Matrizen à 24×24),
+   Hochkant-Spiele auf 24×48 (siehe drehen.js).
    Das Bild ist ein reiner RGB-Puffer ohne DOM, damit es im Test, in der Vorschau
    und für sACN/NDI gleich aussieht. */
 export const W = 48, H = 24;
@@ -59,7 +60,7 @@ export function schrift(glyphen, { endLuecke = false, fest = 0 } = {}) {
       cx += (fest || breite(rows)) + 1;
     }
   };
-  return { drawText, textWidth, center: (text) => fdiv(W - textWidth(text), 2) };
+  return { drawText, textWidth, center: (text, w = W) => fdiv(w - textWidth(text), 2) };
 }
 
 /* Hochkant-Spiele (z. B. Tetris) zeichnen auf ein Bild von 24×48 (die beiden Matrizen

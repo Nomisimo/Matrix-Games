@@ -1,6 +1,7 @@
 /* ── Spiele für die LED-Matrix (48×24) ─────────────────────────────────────
    Jedes Spiel: key(code) bei Tastendruck, step(held) einmal je Bild (60 fps),
-   render(bild). Töne meldet das Spiel über ton(name); die Oberfläche spielt sie ab.
+   render(bild). Ein Eintrag mit hochkant: true bekommt eine 24×48-Leinwand; die App dreht
+   das Bild dann für die gedrehte Wand (drehen.js). Töne meldet das Spiel über ton(name); die Oberfläche spielt sie ab.
 
    Startbild: Jedes Spiel beginnt mit einer Demo, in der es sich selbst spielt (ohne Text,
    ohne Ton). Enter/Leertaste startet eine Runde. Zurück zur Demo geht es mit Esc, nach
@@ -84,9 +85,9 @@ export function mitDemo({ create, demo, starte, startTasten = START }) {
 function pauseBild(b) {
   // Spielbild abdunkeln, darüber „PAUSE“
   for (let i = 0; i < b.px.length; i++) b.px[i] = b.px[i] >> 2;
-  const t = "PAUSE", x = MARIO_FONT.center(t), w = MARIO_FONT.textWidth(t);
-  b.rect(x - 2, 8, w + 4, 9, [0, 0, 0]);
-  MARIO_FONT.drawText(b, t, x, 10, PAUSE_FARBE);
+  const t = "PAUSE", x = MARIO_FONT.center(t, b.w), w = MARIO_FONT.textWidth(t), y = (b.h >> 1) - 2;
+  b.rect(x - 2, y - 2, w + 4, 9, [0, 0, 0]);
+  MARIO_FONT.drawText(b, t, x, y, PAUSE_FARBE);
 }
 
 const ALLGEMEIN = [["P / Start (Gamepad)", "Pause und weiter"], ["Esc / Select (Gamepad)", "zurück zur Demo"]];
