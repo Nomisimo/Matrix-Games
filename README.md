@@ -1,8 +1,41 @@
 # Matrix Games
 
-A collection of matrix-themed LED games built with Python.
+A collection of matrix-themed LED games for two 24×24 LED matrices (48×24 canvas).
 
-## Games
+## Desktop app (Electron)
+
+Snake, Pong and Mario Jump in one app, built with the same architecture and design as the [Netzwerkplaner](https://github.com/Nomisimo/Netzwerkplaner) (Electron, React, esbuild), with a green accent colour.
+
+- Pick the game in the top bar; keys are listed under the game.
+- **Demo / start screen:** every game opens as a text-free demo that plays itself. Enter or Space starts a round; after game over, on Esc, or after 30 s without input it returns to the demo. The **Können der Demo** slider (0–100 %) sets how well Snake and Pong play: at 100 % the snake follows a Hamiltonian cycle and fills the whole board, Mario walks the course endlessly at one speed.
+- **sACN (E1.31):** start universe per matrix (default 29 and 33), pixels per universe (default 144 = 9 tiles of 4×4), network card to send from. Same tile mapping as `matrix-snake/sacn_output.py`.
+- **NDI:** 480×240 BGRA stream at 60 fps (every pixel 10×10). Needs the [NDI Runtime](https://ndi.video/tools/); it is loaded with `koffi`, the same way the Python version uses ctypes.
+- **Live view:** both matrices drawn exactly as the frame goes out on the network.
+- **Matrix an/aus:** blacks out the LED matrices (sACN and NDI keep sending, but black) while the game keeps running.
+- **Input:** keyboard (also through a KVM switch or KVM-over-IP, as long as the app window has focus) and gamepads (D-pad/stick = arrows, A = jump/start, B/X = run/fire, Start = Enter, Select = Esc; in Pong pad 1 is the left paddle, pad 2 the right one).
+- Output keeps running while you switch games and while the window is minimised. There is one sACN output and one NDI stream; it always shows the game that is selected.
+
+```bash
+npm install
+npm start          # build the UI and start Electron
+npm test           # unit tests (game logic, sACN packets, NDI frame)
+npm run dist:mac   # .dmg (arm64 + x64)
+npm run dist:win   # .exe installer (NSIS, x64)
+```
+
+**Updates and releases** work like in the Netzwerkplaner. The app checks GitHub for a newer release at start (click the version badge for the changelog and "Nach Updates suchen"). Windows installs it by itself (electron-updater); on macOS the app downloads the matching DMG and opens it. Releases are built only on demand: push a tag `v<version>` or start *Actions → Release → Run workflow*. Windows x64 plus macOS Apple Silicon and Intel; the release text comes from `src/shared/version.js`.
+
+```
+src/main/          Electron main process; spiele/ausgabe.js = sACN and NDI sender
+src/preload/       IPC bridge (contextBridge)
+src/renderer/      React UI (App.jsx), sound (spiele/ton.js)
+src/shared/spiele/ game logic without UI: snake.js, pong.js, mario/
+test/              unit tests (node:test)
+```
+
+Snake and Pong are 1:1 ports of the Python games below: with the same inputs, every frame has the same pixels. Mario Jump started as a port and has since been extended: a flagpole and castle at the end of the course, worlds that get faster with more enemies, piranha plants, paratroopas, kickable shells, fireballs, coin, star and 1-up blocks, and a redesigned Mario.
+
+## Python games
 
 | Game | Description |
 |------|-------------|

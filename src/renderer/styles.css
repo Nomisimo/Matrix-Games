@@ -1,0 +1,19 @@
+/* ── Matrix Games – Global CSS (Designsprache wie Netzwerkplaner, Akzent Grün) ──
+   Wird vom Build statisch in <head> injiziert. */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--mg-bg, #15191e); color: var(--mg-text, #e8eaed); height: 100%; overflow: hidden; }
+#root { height: 100%; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--mg-accent, #27ae60); outline-offset: -1px; }
+input[type=checkbox] { accent-color: var(--mg-accent, #27ae60); }
+button:hover:not(:disabled) { filter: brightness(1.1); }
+button:active:not(:disabled) { filter: brightness(0.95); }
+button:disabled { opacity: .45; cursor: default !important; }
+a { color: inherit; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--mg-line, #3a424c); border-radius: 4px; }
+input[type=number]::-webkit-inner-spin-button { opacity: .4; }
+select option { background: var(--mg-optbg, #1b2026); color: var(--mg-text, #e8eaed); }
+.sp-norm-hint { font-size: 10px; color: var(--mg-muted, #7c8794); margin-top: 2px; display: block; }
+.sp-section-label { font-size: 11px; color: var(--mg-accent, #27ae60); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
+@keyframes npFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }

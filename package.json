@@ -1,0 +1,90 @@
+{
+  "name": "matrix-games",
+  "version": "1.0.0-beta.3",
+  "private": true,
+  "description": "Snake, Pong und Mario Jump für zwei LED-Matrizen (48×24) mit sACN- und NDI-Ausgabe",
+  "author": "Momo",
+  "license": "UNLICENSED",
+  "main": "src/main/main.js",
+  "scripts": {
+    "build": "node scripts/build.js --minify",
+    "build:dev": "node scripts/build.js",
+    "start": "npm run build:dev && electron .",
+    "test": "node scripts/test.js",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "dist:mac": "npm run build && electron-builder --mac --arm64 --x64",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:ci": "electron-builder --publish never"
+  },
+  "build": {
+    "appId": "dev.matrixgames",
+    "productName": "Matrix Games",
+    "icon": "assets/app-icon/icon.png",
+    "files": [
+      "src/main/**",
+      "src/preload/**",
+      "dist-app/index.html",
+      "assets/app-icon/**",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.games",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "Matrix Games sendet das Spielbild per sACN und NDI an die LED-Matrizen im lokalen Netz."
+      }
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "differentialPackage": false
+    },
+    "directories": {
+      "output": "dist"
+    },
+    "artifactName": "Matrix-Games-${version}-${os}-${arch}.${ext}",
+    "publish": {
+      "provider": "github",
+      "owner": "Nomisimo",
+      "repo": "Matrix-Games"
+    },
+    "dmg": {
+      "writeUpdateInfo": false
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.28.2",
+    "lucide-react": "^1.49.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "koffi": "^2.16.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Nomisimo/Matrix-Games.git"
+  },
+  "homepage": "https://github.com/Nomisimo/Matrix-Games"
+}

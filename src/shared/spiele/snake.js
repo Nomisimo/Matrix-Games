@@ -1,0 +1,310 @@
+/* ── Snake (Port von matrix-snake) ─────────────────────────────────────────
+   Tick-basiert: Akkumulator, Start mit 200 ms je Schritt, alle 5 Früchte schneller.
+   Zustände: title → playing ↔ paused → game_over → title */
+import { schrift, fdiv } from "./pixel.js";
+
+const F = schrift({
+  A: ["010", "101", "111", "101", "101"], B: ["110", "101", "110", "101", "110"],
+  C: ["011", "100", "100", "100", "011"], D: ["110", "101", "101", "101", "110"],
+  E: ["111", "100", "111", "100", "111"], F: ["111", "100", "111", "100", "100"],
+  G: ["011", "100", "101", "101", "011"], H: ["101", "101", "111", "101", "101"],
+  I: ["111", "010", "010", "010", "111"], J: ["001", "001", "001", "101", "010"],
+  K: ["101", "110", "100", "110", "101"], L: ["100", "100", "100", "100", "111"],
+  M: ["101", "111", "101", "101", "101"], N: ["1001", "1101", "1011", "1001", "1001"],
+  O: ["010", "101", "101", "101", "010"], P: ["110", "101", "110", "100", "100"],
+  Q: ["010", "101", "101", "110", "011"], R: ["110", "101", "110", "101", "101"],
+  S: ["011", "100", "010", "001", "110"], T: ["111", "010", "010", "010", "010"],
+  U: ["101", "101", "101", "101", "111"], V: ["101", "101", "101", "010", "010"],
+  W: ["101", "101", "111", "111", "101"], X: ["101", "101", "010", "101", "101"],
+  Y: ["101", "101", "010", "010", "010"], Z: ["111", "001", "010", "100", "111"],
+  0: ["010", "101", "101", "101", "010"], 1: ["010", "110", "010", "010", "111"],
+  2: ["111", "001", "011", "100", "111"], 3: ["111", "001", "011", "001", "111"],
+  4: ["101", "101", "111", "001", "001"], 5: ["111", "100", "111", "001", "110"],
+  6: ["011", "100", "111", "101", "011"], 7: ["111", "001", "010", "010", "010"],
+  8: ["111", "101", "111", "101", "111"], 9: ["110", "101", "111", "001", "110"],
+  " ": ["000", "000", "000", "000", "000"], "-": ["000", "000", "111", "000", "000"],
+  "!": ["010", "010", "010", "000", "010"], ":": ["000", "010", "000", "010", "000"],
+  ".": ["000", "000", "000", "000", "010"],
+});
+const { drawText, textWidth, center: cx } = F;
+
+const WALL = [55, 55, 55], HEAD = [0, 255, 80], BODY = [0, 185, 55], FOOD = [255, 65, 35], SCORE_C = [175, 75, 240];
+const BLACK = [0, 0, 0];
+export const X1 = 1, X2 = 46, Y1 = 1, Y2 = 22;
+export const TICK_RATES = [0.200, 0.170, 0.140, 0.110, 0.085, 0.065, 0.050];
+const FOODS_PER_LEVEL = 5;
+const DT = 1 / 60;
+
+const DIRS = {
+  ArrowUp: [0, -1], KeyW: [0, -1], ArrowDown: [0, 1], KeyS: [0, 1],
+  ArrowLeft: [-1, 0], KeyA: [-1, 0], ArrowRight: [1, 0], KeyD: [1, 0],
+};
+const k = (x, y) => `${x},${y}`;
+
+export class SnakeRunde {
+  constructor(ton = () => {}, rnd = Math.random) {
+    this.ton = ton; this.rnd = rnd;
+    const sx = fdiv(X1 + X2, 2), sy = fdiv(Y1 + Y2, 2);
+    this.body = [[sx, sy], [sx - 1, sy], [sx - 2, sy]];
+    this.dir = [1, 0]; this.pending = [1, 0]; this.growth = 0;
+    this.score = 0; this.foodCount = 0; this.level = 0;
+    this.tickRate = TICK_RATES[0]; this.accum = 0; this.blink = 0; this.food = null;
+    this.spawnFood();
+  }
+  get head() { return this.body[0]; }
+  occupancy() { return new Set(this.body.map(([x, y]) => k(x, y))); }
+  setDir(dx, dy) { if (dx !== -this.dir[0] || dy !== -this.dir[1]) this.pending = [dx, dy]; }
+  uiCells() {
+    const cells = new Set();
+    if (this.ohneHud) return cells;      // Demo: ohne Anzeige darf das Futter überall liegen
+    const sw = textWidth(String(this.score));
+    for (let y = 1; y < 6; y++) for (let x = 2; x < 2 + sw; x++) cells.add(k(x, y));
+    const lw = textWidth("L" + (this.level + 1));
+    for (let y = 1; y < 6; y++) for (let x = 45 - lw; x < 45; x++) cells.add(k(x, y));
+    return cells;
+  }
+  spawnFood() {
+    const occ = this.occupancy();
+    for (const c of this.uiCells()) occ.add(c);
+    if (occ.size >= (X2 - X1 + 1) * (Y2 - Y1 + 1)) { this.food = null; return; }
+    for (let i = 0; i < 10000; i++) {
+      const x = X1 + Math.floor(this.rnd() * (X2 - X1 + 1)), y = Y1 + Math.floor(this.rnd() * (Y2 - Y1 + 1));
+      if (!occ.has(k(x, y))) { this.food = [x, y]; return; }
+    }
+  }
+  handleKey(code) { if (DIRS[code]) this.setDir(...DIRS[code]); }
+  update(dt) {
+    this.blink += dt; this.accum += dt;
+    while (this.accum >= this.tickRate) {
+      this.accum -= this.tickRate;
+      if (this.tick()) return "dead";
+    }
+    return null;
+  }
+  tick() {
+    this.dir = this.pending;
+    const [hx, hy] = this.head, nx = hx + this.dir[0], ny = hy + this.dir[1];
+    if (!(X1 <= nx && nx <= X2 && Y1 <= ny && ny <= Y2)) { this.ton("die"); return true; }
+    const occ = this.occupancy();
+    // Schwanzausnahme: ohne Wachstum wird das Schwanzfeld in diesem Schritt frei
+    if (this.growth <= 0) { const [tx, ty] = this.body[this.body.length - 1]; occ.delete(k(tx, ty)); }
+    if (occ.has(k(nx, ny))) { this.ton("die"); return true; }
+    this.body.unshift([nx, ny]);
+    if (this.food && nx === this.food[0] && ny === this.food[1]) {
+      this.ton("eat");
+      this.foodCount++;
+      this.score += 10 * (this.level + 1);
+      this.growth += 3;
+      const lvl = Math.min(fdiv(this.foodCount, FOODS_PER_LEVEL), TICK_RATES.length - 1);
+      if (lvl > this.level) { this.level = lvl; this.tickRate = TICK_RATES[lvl]; }
+      this.spawnFood();
+    }
+    if (this.growth > 0) this.growth--; else this.body.pop();
+    return false;
+  }
+  render(b, hud = true) {
+    b.fill(BLACK);
+    b.rect(0, 0, 48, 1, WALL); b.rect(0, 23, 48, 1, WALL); b.rect(0, 0, 1, 24, WALL); b.rect(47, 0, 1, 24, WALL);
+    if (this.food && Math.floor(this.blink * 6) % 3 !== 0) b.set(this.food[0], this.food[1], FOOD);
+    for (let i = this.body.length - 1; i >= 0; i--) b.set(this.body[i][0], this.body[i][1], i === 0 ? HEAD : BODY);
+    if (!hud) return;
+    drawText(b, String(this.score), 2, 1, SCORE_C);
+    const lvl = "L" + (this.level + 1);
+    drawText(b, lvl, 45 - textWidth(lvl), 1, SCORE_C);
+  }
+}
+
+/* ── Demo: die Schlange spielt selbst ──────────────────────────────────────
+   Zwei Fahrweisen, über „Können“ (0–100 %) einstellbar:
+   - gering: kürzester Weg zum Futter (Breitensuche) mit Platzprüfung und Fehlern
+   - hoch:   fester Rundweg über alle Felder (Hamilton-Kreis) mit Abkürzungen;
+             damit kann die Schlange das ganze Feld füllen, ohne sich einzusperren.
+   Ohne Text, ohne Ton. */
+const NACHBARN = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+const frei = (x, y, occ) => X1 <= x && x <= X2 && Y1 <= y && y <= Y2 && !occ.has(k(x, y));
+function flaeche(sx, sy, occ, max) {
+  const seen = new Set([k(sx, sy)]), q = [[sx, sy]];
+  while (q.length && seen.size < max) {
+    const [x, y] = q.shift();
+    for (const [dx, dy] of NACHBARN) {
+      const nx = x + dx, ny = y + dy, key = k(nx, ny);
+      if (!seen.has(key) && frei(nx, ny, occ)) { seen.add(key); q.push([nx, ny]); }
+    }
+  }
+  return seen.size;
+}
+
+/* Rundweg über alle Felder: Spalte X1 ist der Rückweg, die übrigen Spalten werden
+   zeilenweise im Zickzack abgefahren. Geht auf, weil das Feld 22 Zeilen (gerade) hat. */
+export const FELDER = (X2 - X1 + 1) * (Y2 - Y1 + 1);
+function rundweg() {
+  const pfad = [];
+  for (let y = Y1; y <= Y2; y++) {
+    if ((y - Y1) % 2 === 0) for (let x = X1 + 1; x <= X2; x++) pfad.push([x, y]);
+    else for (let x = X2; x > X1; x--) pfad.push([x, y]);
+  }
+  for (let y = Y2; y >= Y1; y--) pfad.push([X1, y]);
+  const nr = new Map();
+  pfad.forEach(([x, y], i) => nr.set(k(x, y), i));
+  return nr;
+}
+export const RUNDWEG = rundweg();
+const abstand = (a, b) => (b - a + FELDER) % FELDER;
+
+// Zug entlang des Rundwegs, mit Abkürzung zum Futter, solange der Schwanz nicht überholt wird
+export function hamiltonZug(g, mut = 1) {
+  const [hx, hy] = g.head, nr = RUNDWEG.get(k(hx, hy));
+  if (nr === undefined) return null;                       // Kopf außerhalb: nichts zu tun
+  const occ = g.occupancy();
+  const [tx, ty] = g.body[g.body.length - 1];
+  if (g.growth <= 0) occ.delete(k(tx, ty));
+  const bisSchwanz = abstand(nr, RUNDWEG.get(k(tx, ty)));
+  const bisFutter = g.food ? abstand(nr, RUNDWEG.get(k(g.food[0], g.food[1]))) : 0;
+  const leer = FELDER - g.body.length;
+  // Abkürzen nur, solange der Schwanz mit Sicherheitsabstand voraus bleibt (die Schlange
+  // wächst je Futter um 3 Felder, so lange rückt der Schwanz nicht nach). „mut“ kommt aus dem Können.
+  const sicher = g.growth + 4;
+  const grenze = leer > FELDER * 0.2 ? 1 + Math.floor(Math.max(0, bisSchwanz - sicher - 1) * mut) : 0;
+  let best = null, bestWeit = -1;
+  for (const [dx, dy] of NACHBARN) {
+    const nx = hx + dx, ny = hy + dy;
+    if (dx === -g.dir[0] && dy === -g.dir[1]) continue;
+    if (!frei(nx, ny, occ)) continue;
+    const weit = abstand(nr, RUNDWEG.get(k(nx, ny)));
+    if (weit === 0) continue;
+    if (weit > 1) {                                        // Abkürzung
+      if (weit > grenze) continue;
+      if (g.food && weit > bisFutter) continue;            // nicht am Futter vorbei
+      if (weit >= bisSchwanz - sicher) continue;           // nicht am Schwanz vorbei
+    }
+    if (weit > bestWeit) { bestWeit = weit; best = [dx, dy]; }
+  }
+  return best;
+}
+
+// Kürzester Weg zum Futter, aber nur wenn danach genug Platz bleibt
+export function snakeZug(g) {
+  const occ = g.occupancy();
+  const [tx, ty] = g.body[g.body.length - 1];
+  if (g.growth <= 0) occ.delete(k(tx, ty));
+  const [hx, hy] = g.head;
+  const moves = NACHBARN.filter(([dx, dy]) => !(dx === -g.dir[0] && dy === -g.dir[1]) && frei(hx + dx, hy + dy, occ));
+  if (!moves.length) return null;
+  const platz = (dx, dy) => flaeche(hx + dx, hy + dy, occ, g.body.length + 8);
+  // Breitensuche zum Futter
+  if (g.food) {
+    const ziel = k(g.food[0], g.food[1]), erster = new Map();
+    const q = [];
+    for (const [dx, dy] of moves) { const key = k(hx + dx, hy + dy); erster.set(key, [dx, dy]); q.push([hx + dx, hy + dy]); }
+    while (q.length) {
+      const [x, y] = q.shift(), key = k(x, y);
+      if (key === ziel) {
+        const m = erster.get(key);
+        if (platz(...m) >= g.body.length + 4) return m;
+        break;
+      }
+      for (const [dx, dy] of NACHBARN) {
+        const nx = x + dx, ny = y + dy, nk = k(nx, ny);
+        if (!erster.has(nk) && frei(nx, ny, occ)) { erster.set(nk, erster.get(key)); q.push([nx, ny]); }
+      }
+    }
+  }
+  return moves.map((m) => [m, platz(...m)]).sort((a, b) => b[1] - a[1])[0][0];
+}
+
+/* Können 0–1: ab 0,8 fährt die Schlange den Rundweg (füllt das Feld), darunter den
+   kurzen Weg zum Futter und macht umso öfter einen zufälligen Fehler, je kleiner der Wert. */
+export function demoZug(g, koennen = 1, rnd = Math.random) {
+  const fehler = Math.max(0, 0.8 - koennen) * 0.25;
+  const occ = g.occupancy();
+  const [tx, ty] = g.body[g.body.length - 1];
+  if (g.growth <= 0) occ.delete(k(tx, ty));
+  const [hx, hy] = g.head;
+  const moves = NACHBARN.filter(([dx, dy]) => !(dx === -g.dir[0] && dy === -g.dir[1]) && frei(hx + dx, hy + dy, occ));
+  if (!moves.length) return null;
+  if (fehler > 0 && rnd() < fehler) return moves[Math.floor(rnd() * moves.length)];
+  if (koennen >= 0.8) {
+    const m = hamiltonZug(g, (koennen - 0.8) / 0.2);
+    if (m) return m;
+  }
+  return snakeZug(g);
+}
+
+export function createSnakeDemo({ koennen = () => 1 } = {}) {
+  // Mit dem Können steigt auch das Tempo: bei 100 % fährt die Schlange von Anfang an schnell
+  const stufe = (kn) => Math.min(TICK_RATES.length - 1, Math.round(kn * (TICK_RATES.length - 1)));
+  const neu = (kn) => {
+    const r = Object.assign(new SnakeRunde(), { ohneHud: true });
+    r.level = stufe(kn); r.tickRate = TICK_RATES[r.level];
+    return r;
+  };
+  let g = neu(1), tot = 0;
+  return {
+    step() {
+      const kn = koennen();
+      if (tot > 0) { if (--tot === 0) g = neu(kn); return; }
+      if (g.level < stufe(kn)) { g.level = stufe(kn); g.tickRate = TICK_RATES[g.level]; }
+      const m = demoZug(g, kn);
+      if (m) g.setDir(...m);
+      if (g.update(DT) === "dead") tot = 60;
+      // Feld voll: kurz stehen lassen, dann von vorn
+      else if (!g.food && g.growth <= 0) tot = 180;
+    },
+    render(b) { g.render(b, false); },
+    get runde() { return g; },
+  };
+}
+
+export function createSnake({ ton = () => {} } = {}) {
+  let state = "title", game = null, high = 0, blink = 0;
+  const neu = () => { game = new SnakeRunde(ton); state = "playing"; };
+  return {
+    id: "snake",
+    get state() { return state; },
+    get score() { return game?.score || 0; },
+    key(code) {
+      if (state === "title") { if (code === "Space") neu(); }
+      else if (state === "playing") { if (code === "Escape" || code === "KeyP") state = "paused"; else game.handleKey(code); }
+      else if (state === "paused") {
+        if (["Escape", "Space", "KeyP"].includes(code)) state = "playing";
+        else if (code === "KeyQ") state = "title";
+      } else if (state === "game_over") {
+        if (code === "Space") neu();
+        else if (code === "Escape") state = "title";
+      }
+    },
+    step() {
+      if (state === "playing" && game.update(DT) === "dead") {
+        if (game.score > high) high = game.score;
+        state = "game_over";
+      }
+      blink += DT;
+    },
+    render(b) {
+      if (state === "title") {
+        b.fill(BLACK);
+        drawText(b, "SNAKE", cx("SNAKE"), 4, HEAD);
+        DECO.forEach(([x, y], i) => b.set(x, y, i === 0 ? HEAD : BODY));
+        b.set(34, 10, FOOD);
+        if (Math.floor(blink * 2) % 2 === 0) drawText(b, "PRESS SPACE", cx("PRESS SPACE"), 14, SCORE_C);
+        if (high > 0) { const hs = "BEST " + high; drawText(b, hs, cx(hs), 18, [90, 90, 200]); }
+      } else if (state === "playing") game.render(b);
+      else if (state === "paused") {
+        game.render(b);
+        const x = cx("PAUSE"), y = 9;
+        b.rect(x - 2, y - 1, textWidth("PAUSE") + 4, 7, BLACK);
+        drawText(b, "PAUSE", x, y, [255, 230, 50]);
+      } else {
+        b.fill(BLACK);
+        const [msg, col] = Math.floor(blink * 1.5) % 3 < 2 ? ["GAME OVER", FOOD] : ["SPACE", [200, 200, 200]];
+        drawText(b, msg, cx(msg), 2, col);
+        const sc = "SCORE " + game.score;
+        drawText(b, sc, cx(sc), 9, SCORE_C);
+        if (high > 0) {
+          if (game.score >= high) drawText(b, "NEW BEST", cx("NEW BEST"), 16, [255, 220, 0]);
+          else { const hs = "BEST " + high; drawText(b, hs, cx(hs), 16, [90, 90, 200]); }
+        }
+      }
+    },
+  };
+}

@@ -21,3 +21,8 @@ env/
 .idea/
 *.swp
 *.swo
+
+# Electron-App
+node_modules/
+dist-app/
+*.log
