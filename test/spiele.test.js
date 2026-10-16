@@ -497,12 +497,16 @@ test("Highscores: Snake speichert über rekord, 0 Punkte zählen nicht", () => {
   let wert = 0;
   const rekord = { get: () => wert, set: (n) => { wert = n; } };
   const s = createSnake({ rekord });
+  // Futter neben die Bahn legen, sonst frisst die geradeaus fahrende Schlange es zufällig
+  const futterWeg = () => { const g = s.spiel; g.food = [g.body[0][0], g.body[0][1] === 1 ? 3 : 1]; };
   s.key("Space");
+  futterWeg();
   for (let i = 0; i < 60 * 60 && s.state !== "game_over"; i++) s.step();
   assert.equal(s.state, "game_over");
   assert.equal(wert, 0, "0 Punkte sind kein Rekord");
   s.key("Space");
   s.spiel.score = 120;   // Runde mit Punkten nachstellen
+  futterWeg();
   for (let i = 0; i < 60 * 60 && s.state !== "game_over"; i++) s.step();
   assert.equal(wert, 120);
 });
