@@ -2,23 +2,25 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { S, ACCENT, OK, ERR, WARN, SUB, MUTED, TEXT2, INPUT, LINE, THEME_KEY, themeWahl } from "../shared/constants.js";
 import { SPIELE, Bild, W, H } from "../shared/spiele/index.js";
 import { createMenue } from "../shared/spiele/menue.js";
+import { groesse, drehe, passt, richtungAus, drehHinweis, testbild, QUER, HOCHKANT } from "../shared/spiele/drehen.js";
 import { api, isElectron } from "./api.js";
 import { createTon } from "./spiele/ton.js";
 import { Toggle, Dot, Card, Table, td, Hint, Modal } from "./ui.jsx";
 import { CHANGELOG, compareVersions, neuesteVersion, istBeta, RELEASES_URL } from "../shared/version.js";
-import { Volume2, VolumeX, RotateCcw, RefreshCw, TriangleAlert, Gamepad2, Sun, Moon, Monitor, Power, Keyboard, ArrowUpCircle, Download, Pause, Play, Trophy } from "lucide-react";
+import { Volume2, VolumeX, RotateCcw, RefreshCw, TriangleAlert, Gamepad2, Sun, Moon, Monitor, Power, Keyboard, ArrowUpCircle, Download, Pause, Play, Trophy, RotateCw, Compass } from "lucide-react";
 import APP_ICON_SVG from "../../assets/app-icon/icon.svg";
 const APP_ICON = `data:image/svg+xml;utf8,${encodeURIComponent(APP_ICON_SVG)}`;
 
 const LS = "matrixgames_einstellungen";
 // Vorgaben wie im Snake-Original auf der echten Matrix (Universe 29 und 33, 144 Pixel je Universe)
 // menue: Spielmenü auf der Matrix; leerlauf: Sekunden ohne Eingabe bis zur Demo (0 = nie);
-// comStaerke: Pong-Computer in %; rekorde: Highscore je Spiel
-const STANDARD = { spiel: "snake", ton: true, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, rekorde: {}, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games" } };
+// comStaerke: Pong-Computer in %; rekorde: Highscore je Spiel; drehung: in welche Richtung die Wand
+// für Hochkant-Spiele gedreht wird; sensor: HTTP-Endpoint für einen Drehsensor
+const STANDARD = { spiel: "snake", ton: true, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games" } };
 const laden = () => {
   try {
     const v = JSON.parse(localStorage.getItem(LS) || "null");
-    return v ? { ...STANDARD, ...v, rekorde: { ...v.rekorde }, sacn: { ...STANDARD.sacn, ...v.sacn }, ndi: { ...STANDARD.ndi, ...v.ndi } } : STANDARD;
+    return v ? { ...STANDARD, ...v, rekorde: { ...v.rekorde }, sensor: { ...STANDARD.sensor, ...v.sensor }, sacn: { ...STANDARD.sacn, ...v.sacn }, ndi: { ...STANDARD.ndi, ...v.ndi } } : STANDARD;
   } catch { return STANDARD; }
 };
 
@@ -31,6 +33,8 @@ const SPIELTASTEN = new Set(["Space", "Enter", "ArrowUp", "ArrowDown", "ArrowLef
 const TIPPFELD = new Set(["text", "number", "search", "email", "url", "password"]);
 const istEingabe = (el) => el && ((el.tagName === "INPUT" && TIPPFELD.has(el.type)) || el.tagName === "TEXTAREA" || el.isContentEditable);
 const SCHWARZ = new Uint8Array(W * H * 3);
+const LAGE_TEXT = { quer: "quer", rechts: "hochkant, nach rechts gedreht", links: "hochkant, nach links gedreht", hochkant: "hochkant", kopf: "auf dem Kopf" };
+const RICHTUNG_TEXT = { rechts: "nach rechts (im Uhrzeigersinn)", links: "nach links (gegen den Uhrzeigersinn)" };
 // Diese Tasten öffnen aus der Demo das Spielmenü (wenn es eingeschaltet ist)
 const MENUE_TASTEN = new Set(["Enter", "NumpadEnter", "Space", "Pause", "Digit1", "Digit2", "Numpad1", "Numpad2"]);
 
@@ -68,20 +72,25 @@ function padTasten(spiel, imStart) {
 const anzahlUniverses = (fpu) => Math.ceil(576 / Math.max(1, Math.min(170, +fpu || 144)));
 const THEMES = [["system", "wie das System", Monitor], ["hell", "Hell", Sun], ["dunkel", "Dunkel", Moon]];
 
-// Zwei LED-Matrizen à 24×24 als runde Punkte, so wie das Bild per sACN/NDI hinausgeht
-function zeichneMatrix(cv, px) {
-  const ctx = cv.getContext("2d"), z = 7, gap = 18, r = z * 0.38;
+// Zwei LED-Matrizen à 24×24 als runde Punkte, so wie das Bild per sACN/NDI hinausgeht.
+// px ist der 48×24-Puffer der Matrizen; lage sagt, wie die Wand steht (quer, rechts, links),
+// damit die Ansicht die Matrizen so zeigt, wie man sie vor sich sieht.
+const LIVE_Z = 7, LIVE_GAP = 18, LIVE_LANG = 48 * LIVE_Z + LIVE_GAP, LIVE_KURZ = 24 * LIVE_Z;
+function zeichneMatrix(cv, px, lage = "quer") {
+  const ctx = cv.getContext("2d"), z = LIVE_Z, r = z * 0.38;
   ctx.fillStyle = "#07090b";
   ctx.fillRect(0, 0, cv.width, cv.height);
-  for (let m = 0; m < 2; m++) {
-    const ox = m * (24 * z + gap);
-    for (let y = 0; y < 24; y++) for (let x = 0; x < 24; x++) {
-      const i = (y * W + m * 24 + x) * 3, R = px[i], G = px[i + 1], B = px[i + 2];
-      ctx.fillStyle = R | G | B ? `rgb(${R},${G},${B})` : "#15191e";
-      ctx.beginPath();
-      ctx.arc(ox + x * z + z / 2, y * z + z / 2, r, 0, Math.PI * 2);
-      ctx.fill();
-    }
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = (y * W + x) * 3, R = px[i], G = px[i + 1], B = px[i + 2];
+    // Position auf der Wand: rechts gedreht liegt Matrix 1 oben, links gedreht unten
+    let u = x, v = y;
+    if (lage === "rechts") { u = H - 1 - y; v = x; } else if (lage === "links") { u = y; v = W - 1 - x; }
+    const lang = lage === "quer" ? u : v, kurz = lage === "quer" ? v : u;
+    const a = lang * z + (lang >= 24 ? LIVE_GAP : 0) + z / 2, b = kurz * z + z / 2;
+    ctx.fillStyle = R | G | B ? `rgb(${R},${G},${B})` : "#15191e";
+    ctx.beginPath();
+    if (lage === "quer") ctx.arc(a, b, r, 0, Math.PI * 2); else ctx.arc(b, a, r, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
@@ -109,6 +118,11 @@ export default function App() {
   const ausgabeAn = (cfg.sacn.on || cfg.ndi.on) && isElectron;
   const ausgabeRef = useRef(ausgabeAn), schwarzRef = useRef(cfg.schwarz), spielRef = useRef(cfg.spiel), koennenRef = useRef(cfg.koennen);
   const cfgRef = useRef(cfg), menueRef = useRef(null), startNachWechsel = useRef(null);
+  const [sensorSt, setSensorSt] = useState(null);
+  const [testbildAn, setTestbildAn] = useState(false);
+  const sensorRef = useRef(null), testbildRef = useRef(false);
+  sensorRef.current = cfg.sensor.on ? sensorSt?.lage || null : null;
+  testbildRef.current = testbildAn;
   cfgRef.current = cfg;
   ausgabeRef.current = ausgabeAn;
   schwarzRef.current = cfg.schwarz;
@@ -160,6 +174,13 @@ export default function App() {
   }, [JSON.stringify(cfg.sacn), JSON.stringify(cfg.ndi)]);
   useEffect(() => api.onStatus(setStatus), []);
 
+  // Drehsensor: Endpoint im Hauptprozess ein- und ausschalten; die Antwort nennt auch, was das Spiel braucht
+  const spielDef = SPIELE.find((s) => s.id === cfg.spiel) || SPIELE[0];
+  useEffect(() => {
+    if (isElectron) api.drehsensor({ on: cfg.sensor.on, port: +cfg.sensor.port || 8787, spiel: spielDef.id, braucht: spielDef.hochkant ? "hochkant" : "quer", drehung: cfg.drehung }).then((st) => st && setSensorSt(st));
+  }, [cfg.sensor.on, cfg.sensor.port, spielDef.id, cfg.drehung]);
+  useEffect(() => api.onDrehsensor(setSensorSt), []);
+
   // Ton
   useEffect(() => { tonRef.current = createTon(); return () => tonRef.current.close(); }, []);
   useEffect(() => { tonRef.current.setAn(cfg.ton); }, [cfg.ton]);
@@ -194,6 +215,7 @@ export default function App() {
     if (m) {
       const r = m.key(code);
       if (r?.zurueck) menueRef.current = null;
+      else if (r?.drehung) setCfg((c) => ({ ...c, drehung: r.drehung }));
       else if (r?.start) {
         menueRef.current = null;
         if (r.start === cfgRef.current.spiel) g?.key(r.taste);
@@ -202,7 +224,7 @@ export default function App() {
       return;
     }
     if (cfgRef.current.menue && g?.state === "demo" && MENUE_TASTEN.has(code)) {
-      menueRef.current = Object.assign(createMenue({ aktuell: cfgRef.current.spiel }), { leer: 0 });
+      menueRef.current = Object.assign(createMenue({ aktuell: cfgRef.current.spiel, drehung: cfgRef.current.drehung }), { leer: 0 });
       return;
     }
     g?.key(code);
@@ -214,7 +236,9 @@ export default function App() {
   // minimiertem Fenster (der Hauptprozess schaltet dafür die Drosselung ab). Gezeichnet wird getrennt
   // davon im Takt des Bildschirms (requestAnimationFrame), damit die Anzeige nicht ruckelt.
   useEffect(() => {
-    const bild = new Bild();
+    // Aufrechte Leinwand je Ausrichtung; out ist der 48×24-Puffer für die Matrizen
+    const leinwand = { quer: new Bild(...QUER), hochkant: new Bild(...HOCHKANT) }, out = new Uint8Array(W * H * 3);
+    let bild = leinwand.quer;
     let last = performance.now(), acc = 0, raf = 0, neu = false, n = 0, padVorher = new Set(), padZahl = 0;
     const tick = () => {
       const now = performance.now();
@@ -231,8 +255,14 @@ export default function App() {
       // Der Timer tickt alle 4 ms: knapp vor der Zeit zählt schon, sonst schwankt der Abstand zwischen 16 und 20 ms
       let schritte = 0;
       const m = menueRef.current;
+      const def = SPIELE.find((s) => s.id === spielRef.current) || SPIELE[0];
+      const c = cfgRef.current, lage = sensorRef.current;
+      // Steht die Wand laut Drehsensor falsch für das Spiel, wartet es, und die Matrix zeigt den Hinweis
+      const falsch = !m && passt(def, lage) === false;
+      const richtung = richtungAus(lage, c.drehung);
       while (acc >= STEP - 2 && schritte < 5) {
-        if (m) {
+        if (falsch || testbildRef.current) n++;
+        else if (m) {
           // Spielmenü: nach der eingestellten Zeit ohne Eingabe wieder die Demo
           m.step();
           if (gehalten.size) m.leer = 0;
@@ -243,8 +273,12 @@ export default function App() {
       }
       if (!schritte) return;
       const jetzt = menueRef.current || gameRef.current;
+      bild = menueRef.current ? leinwand.quer : leinwand[def.hochkant ? "hochkant" : "quer"];
       jetzt.render(bild);
-      if (ausgabeRef.current) api.frame(schwarzRef.current ? SCHWARZ : bild.px);
+      if (testbildRef.current) out.set(testbild({ hochkant: !!def.hochkant && !menueRef.current, richtung }));
+      else if (falsch) out.set(drehHinweis({ lage, soll: def.hochkant ? richtung : "quer", richtung, tick: n }));
+      else drehe(bild, richtung, out);
+      if (ausgabeRef.current) api.frame(schwarzRef.current ? SCHWARZ : out);
       neu = true;
       const st = menueRef.current ? "menue" : gameRef.current.state;
       if (st !== zustandRef.current) { zustandRef.current = st; setZustand(st); }
@@ -254,8 +288,9 @@ export default function App() {
       if (!neu) return;
       neu = false;
       const cv = canvasRef.current;
-      if (cv) cv.getContext("2d").putImageData(new ImageData(rgba(bild.px), W, H), 0, 0);
-      if (matrixRef.current) zeichneMatrix(matrixRef.current, schwarzRef.current ? SCHWARZ : bild.px);
+      if (cv && cv.width === bild.w && cv.height === bild.h) cv.getContext("2d").putImageData(new ImageData(rgba(bild.px), bild.w, bild.h), 0, 0);
+      const mv = matrixRef.current;
+      if (mv) zeichneMatrix(mv, schwarzRef.current ? SCHWARZ : out, mv.dataset.lage);
       if ((++n & 63) === 0) {
         let z = 0;
         try { z = [...(navigator.getGamepads?.() || [])].filter(Boolean).length; } catch {}
@@ -306,6 +341,14 @@ export default function App() {
   const zumSpiel = () => document.activeElement?.blur?.();
   const imSpiel = !["demo", "menue", "title", "game_over"].includes(zustand);
   const pauseUmschalten = () => { gameRef.current?.pausieren?.(); zumSpiel(); };
+  // Matrix drehen: Lage laut Sensor, Richtung (Sensor vor Einstellung), wie die Wand in der Live-Ansicht steht
+  const sensorLage = cfg.sensor.on ? sensorSt?.lage || null : null;
+  const richtung = richtungAus(sensorLage, cfg.drehung);
+  const [lw, lh] = groesse(def);
+  const wandLage = sensorLage ? (sensorLage === "quer" || sensorLage === "kopf" ? "quer" : richtung) : def.hochkant && zustand !== "menue" ? richtung : "quer";
+  const falsch = zustand !== "menue" && passt(def, sensorLage) === false;
+  const hochkantSpiele = SPIELE.filter((sp) => sp.hochkant).map((sp) => sp.name);
+  const oben = richtung === "links" ? 2 : 1;
 
   return (
     <div style={S.app}>
@@ -316,7 +359,7 @@ export default function App() {
           v{version.replace(/-beta\.?\d*$/i, "")}{istBeta(version) && <span style={{ marginLeft: 5, color: "#fff", background: ACCENT, borderRadius: 6, padding: "0 5px", fontSize: 9.5, fontWeight: 700 }}>BETA {(version.match(/beta\.?(\d+)/i) || [])[1] || ""}</span>}
         </button>}
         {update?.tag && <button onClick={updateAusfuehren} title={autoUpdate ? "Update automatisch installieren" : macUpdate ? "Update laden und öffnen" : "Download-Seite öffnen"} style={{ background: OK + "22", border: `1px solid ${OK}`, borderRadius: 10, color: OK, fontSize: 11, padding: "1px 8px", cursor: "pointer", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 4 }}><ArrowUpCircle size={12} /> {autoUpdate || macUpdate ? `${update.tag} installieren` : `${update.tag} verfügbar`}</button>}
-        <span style={S.headerMeta}>48×24 px · zwei LED-Matrizen à 24×24</span>
+        <span style={S.headerMeta}>{def.hochkant ? `24×48 px · hochkant, Wand ${richtung === "links" ? "nach links" : "nach rechts"} gedreht` : "48×24 px · zwei LED-Matrizen à 24×24"}</span>
         {isElectron && <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: sendet ? OK : MUTED, marginRight: 4 }}>
           <Dot color={sendet ? (cfg.schwarz ? WARN : OK) : LINE} /> {sendet ? (cfg.schwarz ? "sendet schwarz" : "sendet") : "keine Ausgabe"}
         </span>}
@@ -349,10 +392,18 @@ export default function App() {
           <div>
             <div style={{ ...S.section, padding: 14 }}>
               <div onMouseDown={zumSpiel} style={{ background: "#000", borderRadius: 6, overflow: "hidden", border: `2px solid ${ACCENT}` }}>
-                <canvas ref={canvasRef} width={W} height={H} style={{ display: "block", width: "100%", aspectRatio: `${W} / ${H}`, imageRendering: "pixelated" }} />
+                <canvas ref={canvasRef} width={lw} height={lh} style={def.hochkant
+                  ? { display: "block", height: "min(62vh, 640px)", width: "auto", aspectRatio: `${lw} / ${lh}`, margin: "0 auto", imageRendering: "pixelated" }
+                  : { display: "block", width: "100%", aspectRatio: `${lw} / ${lh}`, imageRendering: "pixelated" }} />
               </div>
+              {falsch && <div style={{ display: "flex", alignItems: "flex-start", gap: 6, marginTop: 10, fontSize: 12, color: WARN }}>
+                <RotateCw size={14} style={{ flexShrink: 0, marginTop: 1 }} /> Matrix drehen: Die Wand steht laut Drehsensor {LAGE_TEXT[sensorLage]}, {def.name} braucht sie {def.hochkant ? `hochkant, ${RICHTUNG_TEXT[richtung]} gedreht` : "quer"}. Das Spiel wartet, bis sie richtig steht.
+              </div>}
+              {!falsch && def.hochkant && !sensorLage && <div style={{ display: "flex", alignItems: "flex-start", gap: 6, marginTop: 10, fontSize: 12, color: SUB }}>
+                <RotateCw size={14} color={ACCENT} style={{ flexShrink: 0, marginTop: 1 }} /> {def.name} läuft hochkant: die Wand {RICHTUNG_TEXT[richtung]} drehen, Matrix {oben} ist dann oben.
+              </div>}
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, fontSize: 12, color: SUB, flexWrap: "wrap" }}>
-                <Gamepad2 size={14} color={ACCENT} /> {def.name} · {W}×{H} px · 60 fps
+                <Gamepad2 size={14} color={ACCENT} /> {def.name} · {lw}×{lh} px{def.hochkant ? " hochkant" : ""} · 60 fps
                 {pads > 0 && <span style={{ color: OK }}>· {pads === 1 ? "1 Gamepad" : `${pads} Gamepads`}</span>}
                 {tippt && <span style={{ color: WARN, display: "inline-flex", alignItems: "center", gap: 4 }}><Keyboard size={13} /> Tastatur im Eingabefeld: Enter oder Klick aufs Spiel</span>}
                 <span style={{ flex: 1 }} />
@@ -438,6 +489,44 @@ export default function App() {
             </div>
 
             <div style={{ ...S.section, padding: 16 }}>
+              <div className="sp-section-label">Matrix drehen</div>
+              <div style={S.field}><span style={S.fieldLabel}>Für Hochkant-Spiele wird die Wand gedreht</span>
+                <div style={{ display: "flex", border: `1px solid ${LINE}`, borderRadius: 6, overflow: "hidden" }}>
+                  {[["rechts", "nach rechts", RotateCw], ["links", "nach links", RotateCcw]].map(([k, l, Ic]) => (
+                    <button key={k} onClick={(e) => { e.currentTarget.blur(); set("drehung", k); }} title={RICHTUNG_TEXT[k]}
+                      style={{ flex: 1, background: cfg.drehung === k ? ACCENT : "transparent", color: cfg.drehung === k ? "#fff" : SUB, border: "none", padding: "7px 9px", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 600 }}><Ic size={14} /> {l}</button>
+                  ))}
+                </div>
+                <span className="sp-norm-hint">
+                  {cfg.drehung === "links" ? "Gegen den Uhrzeigersinn: Matrix 2 oben, Matrix 1 unten." : "Im Uhrzeigersinn: Matrix 1 oben, Matrix 2 unten."}{" "}
+                  {hochkantSpiele.length ? `Hochkant laufen: ${hochkantSpiele.join(", ")}.` : "Zurzeit läuft noch kein Spiel hochkant."} Auch im Spielmenü auf der Matrix einstellbar (Eintrag DREH).
+                  {sensorLage === "links" || sensorLage === "rechts" ? ` Der Drehsensor meldet die Richtung, er hat Vorrang: ${RICHTUNG_TEXT[sensorLage]}.` : ""}
+                </span>
+              </div>
+              <button style={{ ...S.secondaryBtn, marginTop: 10, ...(testbildAn ? { background: WARN, color: "#fff", borderColor: WARN } : {}) }}
+                onClick={(e) => { e.currentTarget.blur(); setTestbildAn(!testbildAn); }}
+                title="Zeigt auf jeder Matrix ihre Nummer, einen Pfeil nach oben und oben links eine rote Ecke. Stehen sie aufrecht, stimmt die Drehrichtung.">
+                <Compass size={14} /> {testbildAn ? "Testbild aus" : "Testbild zeigen"}</button>
+              {testbildAn && <span className="sp-norm-hint">Das Spiel wartet, solange das Testbild läuft. Es gilt für die Lage, die {def.name} braucht.</span>}
+
+              <div style={{ marginTop: 14, borderTop: `1px solid ${LINE}`, paddingTop: 12 }}>
+                <Toggle checked={cfg.sensor.on} disabled={!isElectron} onChange={(v) => set("sensor", { on: v })} label="Drehsensor verwenden" />
+                <span className="sp-norm-hint">Ein Sensor an der Wand meldet per HTTP, wie sie steht. Passt das nicht zum gewählten Spiel, zeigt die Matrix „Matrix drehen“ und das Spiel wartet.</span>
+                {cfg.sensor.on && <>
+                  <label style={{ ...S.field, marginTop: 10 }}><span style={S.fieldLabel}>Port</span>
+                    <input style={S.inputSm} type="number" min={1} max={65535} value={cfg.sensor.port} onChange={(e) => set("sensor", { port: +e.target.value })} /></label>
+                  <div style={{ marginTop: 10, fontSize: 12, display: "grid", gap: 6 }}>
+                    <Zeile ok={sensorSt?.on && !sensorSt?.err} text={sensorSt?.err ? `Drehsensor: ${sensorSt.err}` : !sensorSt?.on ? "Drehsensor: startet …" : sensorSt.lage ? `Wand steht ${LAGE_TEXT[sensorSt.lage]} (gemeldet ${new Date(sensorSt.zeit).toLocaleTimeString("de-DE")})` : "Wartet auf die erste Meldung des Sensors"} />
+                  </div>
+                  {sensorSt?.on && <span className="sp-norm-hint" style={{ userSelect: "text", lineHeight: 1.6 }}>
+                    Melden: <code>{(sensorSt.adressen?.[0] || `http://<IP>:${sensorSt.port}/ausrichtung`)}?lage=quer</code> (auch rechts, links, hochkant oder <code>?winkel=90</code>), per GET oder POST mit <code>{'{"lage":"rechts"}'}</code>. Ohne Parameter liefert die Adresse den Stand und was das Spiel braucht.
+                    {sensorSt.adressen?.length > 1 ? ` Weitere Adressen: ${sensorSt.adressen.slice(1).join(", ")}` : ""}
+                  </span>}
+                </>}
+              </div>
+            </div>
+
+            <div style={{ ...S.section, padding: 16 }}>
               <div className="sp-section-label">App-Einstellungen</div>
               <Toggle checked={cfg.menue} onChange={(v) => set("menue", v)} label="Spielmenü auf der Matrix" />
               <span className="sp-norm-hint">Der Start aus der Demo öffnet erst ein Menü auf der Matrix: ↑/↓ wählt das Spiel, bei Pong ←/→ 1P oder 2P, Enter oder A startet. So lässt sich am Gamepad zwischen den Spielen wechseln.</span>
@@ -458,11 +547,14 @@ export default function App() {
 
             <div style={{ ...S.section, padding: 16 }}>
               <div className="sp-section-label">Live-Ansicht</div>
-              <canvas ref={matrixRef} width={24 * 7 * 2 + 18} height={24 * 7} style={{ width: "100%", display: "block", borderRadius: 6, background: INPUT, border: `1px solid ${ACCENT}` }} />
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: MUTED, marginTop: 6 }}>
+              <canvas ref={matrixRef} data-lage={wandLage} width={wandLage === "quer" ? LIVE_LANG : LIVE_KURZ} height={wandLage === "quer" ? LIVE_KURZ : LIVE_LANG}
+                style={{ width: wandLage === "quer" ? "100%" : "48%", margin: "0 auto", display: "block", borderRadius: 6, background: INPUT, border: `1px solid ${ACCENT}` }} />
+              {wandLage === "quer" ? <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: MUTED, marginTop: 6 }}>
                 <span>Matrix 1{cfg.sacn.on ? ` · U ${uni(cfg.sacn.u1)}` : ""}</span>
                 <span>Matrix 2{cfg.sacn.on ? ` · U ${uni(cfg.sacn.u2)}` : ""}</span>
-              </div>
+              </div> : <div style={{ textAlign: "center", fontSize: 11, color: MUTED, marginTop: 6 }}>
+                Hochkant {wandLage === "links" ? "nach links" : "nach rechts"} gedreht: oben Matrix {wandLage === "links" ? 2 : 1}, unten Matrix {wandLage === "links" ? 1 : 2}
+              </div>}
               <Hint>So sieht das Bild auf den Matrizen aus: genau dieser Stand geht per sACN und NDI hinaus.{cfg.schwarz ? " Gerade dunkel geschaltet." : ""}</Hint>
             </div>
           </div>

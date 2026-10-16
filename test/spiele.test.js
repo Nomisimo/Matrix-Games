@@ -481,6 +481,8 @@ test("Spielmenü: wählt Spiel und Pong-Modus, Esc führt zurück", () => {
   assert.equal(m.auswahl, "mario");
   assert.deepEqual(m.key("Pause"), { start: "mario", taste: "Enter" });
   m.key("ArrowDown");
+  assert.equal(m.auswahl, "drehen");
+  m.key("ArrowDown");
   assert.equal(m.auswahl, "snake");
   assert.deepEqual(m.key("Escape"), { zurueck: true });
   const b = new Bild();
