@@ -9,6 +9,15 @@ export const api = {
   ausgabe: (cfg) => (E ? E.ausgabe(cfg) : Promise.resolve(null)),
   frame: (px) => E?.frame(px),
   onStatus: (cb) => (E ? E.onStatus(cb) : () => {}),
+  // Anleitung: in der App als PDF speichern, im Browser über den Druckdialog („Als PDF sichern“)
+  anleitungPdf: (html) => {
+    if (E?.anleitungPdf) return E.anleitungPdf(html);
+    const w = window.open("", "_blank");
+    if (!w) return Promise.resolve({ ok: false });
+    w.document.write(html); w.document.close(); w.focus();
+    setTimeout(() => w.print(), 300);
+    return Promise.resolve({ ok: true });
+  },
   // Updates
   fetchReleases: () => (E?.fetchReleases ? E.fetchReleases() : fetch("https://api.github.com/repos/Nomisimo/Matrix-Games/releases?per_page=20").then((r) => (r.ok ? r.json() : null)).catch(() => null)),
   checkForUpdates: () => (E?.checkForUpdates ? E.checkForUpdates() : Promise.resolve({ auto: false })),
