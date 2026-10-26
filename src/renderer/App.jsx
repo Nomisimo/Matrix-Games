@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { S, ACCENT, OK, ERR, WARN, SUB, MUTED, TEXT2, INPUT, LINE, THEME_KEY, themeWahl } from "../shared/constants.js";
 import { SPIELE, Bild, W, H } from "../shared/spiele/index.js";
 import { anleitungHtml, verfuegbareSpiele } from "../shared/anleitung.js";
-import { createMenue } from "../shared/spiele/menue.js";
+import { createMenue, menueZeigen } from "../shared/spiele/menue.js";
 import { groesse, drehe, passt, richtungAus, drehHinweis, testbild, QUER, HOCHKANT } from "../shared/spiele/drehen.js";
 import { api, isElectron } from "./api.js";
 import { createTon } from "./spiele/ton.js";
@@ -237,8 +237,9 @@ export default function App() {
       }
       return;
     }
-    if (cfgRef.current.menue && g?.state === "demo" && MENUE_TASTEN.has(code)) {
-      const verfuegbar = verfuegbareSpiele(SPIELE, cfgRef.current.aus).map((s) => s.id);
+    // Mit nur einem verfügbaren Spiel kein Menü: der Start geht direkt ins Spiel
+    const verfuegbar = verfuegbareSpiele(SPIELE, cfgRef.current.aus).map((s) => s.id);
+    if (menueZeigen(cfgRef.current.menue, verfuegbar) && g?.state === "demo" && MENUE_TASTEN.has(code)) {
       menueRef.current = Object.assign(createMenue({ aktuell: cfgRef.current.spiel, verfuegbar, drehung: cfgRef.current.drehung }), { leer: 0 });
       return;
     }
@@ -359,7 +360,7 @@ export default function App() {
   const [pdfStatus, setPdfStatus] = useState("");
   const anleitungLaden = async () => {
     setPdfStatus("PDF wird erstellt …");
-    const r = await api.anleitungPdf(anleitungHtml({ spiele: verfuegbar, version, menue: cfg.menue, leerlauf: cfg.leerlauf })).catch((e) => ({ ok: false, fehler: e?.message }));
+    const r = await api.anleitungPdf(anleitungHtml({ spiele: verfuegbar, version, menue: menueZeigen(cfg.menue, verfuegbar), leerlauf: cfg.leerlauf })).catch((e) => ({ ok: false, fehler: e?.message }));
     setPdfStatus(r?.ok ? (r.datei ? `Gespeichert: ${r.datei}` : "") : r?.abgebrochen ? "" : `PDF nicht möglich${r?.fehler ? `: ${r.fehler}` : "."}`);
     zumSpiel();
   };
@@ -575,7 +576,7 @@ export default function App() {
             <div style={{ ...S.section, padding: 16 }}>
               <div className="sp-section-label">App-Einstellungen</div>
               <Toggle checked={cfg.menue} onChange={(v) => set("menue", v)} label="Spielmenü auf der Matrix" />
-              <span className="sp-norm-hint">Der Start aus der Demo öffnet erst ein Menü auf der Matrix: ↑/↓ wählt das Spiel, bei Pong ←/→ 1P oder 2P, Enter oder A startet. So lässt sich am Gamepad zwischen den Spielen wechseln.</span>
+              <span className="sp-norm-hint">Der Start aus der Demo öffnet erst ein Menü auf der Matrix: ↑/↓ wählt das Spiel, bei Pong ←/→ 1P oder 2P, Enter oder A startet. So lässt sich am Gamepad zwischen den Spielen wechseln.{cfg.menue && verfuegbar.length === 1 ? ` Zurzeit ist nur ${verfuegbar[0].name} verfügbar: das Spiel startet direkt, ohne Menü.` : ""}</span>
               <label style={{ ...S.field, marginTop: 14 }}><span style={S.fieldLabel}>Demo übernimmt nach</span>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <input type="range" min={0} max={LEERLAUF_STUFEN.length - 1} step={1} value={Math.max(0, LEERLAUF_STUFEN.indexOf(cfg.leerlauf))}
@@ -601,7 +602,7 @@ export default function App() {
                     title={letztes ? "Ein Spiel muss verfügbar bleiben" : undefined} />;
                 })}
               </div>
-              <span className="sp-norm-hint">Nur diese Spiele stehen oben in der Leiste, im Spielmenü auf der Matrix und in der Anleitung.</span>
+              <span className="sp-norm-hint">Nur diese Spiele stehen oben in der Leiste, im Spielmenü auf der Matrix und in der Anleitung. Ist nur ein Spiel an, gibt es kein Spielmenü: der Start geht direkt ins Spiel.</span>
               <button style={{ ...S.secondaryBtn, marginTop: 12, width: "100%" }} onClick={anleitungLaden}
                 title="Anleitung mit Tastatur- und Gamepad-Belegung für die verfügbaren Spiele als PDF speichern">
                 <FileDown size={14} /> Anleitung als PDF ({verfuegbar.length === 1 ? "1 Spiel" : `${verfuegbar.length} Spiele`})</button>

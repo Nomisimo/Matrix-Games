@@ -7,7 +7,7 @@ import { createMarioDemo } from "../src/shared/spiele/mario/demo.js";
 import { SnakeRunde, TICK_RATES, snakeZug, demoZug, FELDER, Vorhersage, zufall } from "../src/shared/spiele/snake.js";
 import { PongRunde, WINNING_SCORE, createPong } from "../src/shared/spiele/pong.js";
 import { createSnake } from "../src/shared/spiele/snake.js";
-import { createMenue } from "../src/shared/spiele/menue.js";
+import { createMenue, menueZeigen } from "../src/shared/spiele/menue.js";
 import { anleitungHtml, verfuegbareSpiele } from "../src/shared/anleitung.js";
 import { MarioWelt, Goomba, Koopa, GROUND_Y, MARIO_SMALL_H, TILE, weltName } from "../src/shared/spiele/mario/welt.js";
 import { genColumn, erzeugeLevel, POLE_COL, CASTLE_COL, TEMPLATE_W, BONUS_RAUS } from "../src/shared/spiele/mario/level.js";
@@ -692,6 +692,15 @@ test("Spielmenü zeigt nur die verfügbaren Spiele", () => {
   assert.equal(m.auswahl, "snake");
   // Leere Auswahl: lieber alle als ein leeres Menü
   assert.equal(createMenue({ verfuegbar: [] }).auswahl, "snake");
+});
+
+test("Spielmenü nur mit mehr als einem verfügbaren Spiel", () => {
+  assert.equal(menueZeigen(true, ["snake", "pong"]), true);
+  assert.equal(menueZeigen(true, ["tetris"]), false);   // ein Spiel: direkt starten
+  assert.equal(menueZeigen(false, ["snake", "pong"]), false);
+  // Anleitung erwähnt das Menü dann auch nicht
+  const eins = verfuegbareSpiele(SPIELE, ["snake", "pong", "mario"]);
+  assert.ok(!anleitungHtml({ spiele: eins, menue: menueZeigen(true, eins) }).includes("Spielmenü"));
 });
 
 test("Anleitung: jedes Spiel hat Tastatur, Gamepad und Ziel; PDF enthält nur die gewählten", () => {
