@@ -5,6 +5,7 @@
 const dgram = require('dgram');
 const crypto = require('crypto');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const W = 48, H = 24, M = 24; // Leinwand und Kantenlänge einer Matrix
@@ -68,18 +69,67 @@ function ndiBild(px, f = 10, out = null) {
   return out;
 }
 
-/* ── sACN-Sender ────────────────────────────────────────────────────────── */
-function sacnSender({ iface, u1 = 1, u2 = 5, fpu = 144, quelle = 'Netzwerkplaner Spiele' }) {
-  const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+/* ── sACN-Sender ──────────────────────────────────────────────────────────
+   Multicast geht je Netzwerkkarte über einen eigenen Socket mit fester Karte
+   (setMulticastInterface). „Alle Netzwerkkarten“ sendet auf jeder IPv4-Karte: macOS
+   meldet sonst EADDRNOTAVAIL, wenn das System für 239.255.x.x keine Route findet
+   (Show-Netz ohne Gateway, WLAN aus, VPN). Ist eine Ziel-IP eingetragen, geht Unicast
+   direkt an den Controller. Fehler halten die Ausgabe nicht an: jede Sekunde wird
+   geprüft, ob sich die Karten geändert haben, kaputte Sockets werden neu aufgebaut. */
+function ipv4Karten() {
+  const out = [];
+  for (const [name, addrs] of Object.entries(os.networkInterfaces())) {
+    for (const a of addrs || []) if ((a.family === 'IPv4' || a.family === 4) && !a.internal) out.push({ name, address: a.address });
+  }
+  return out;
+}
+
+const istIPv4 = (s) => /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(s) && s.split('.').every((n) => +n <= 255);
+const zielListe = (ziel) => String(ziel || '').split(/[\s,;]+/).filter(istIPv4);
+
+function sacnSender({ iface, ziel, u1 = 1, u2 = 5, fpu = 144, quelle = 'Netzwerkplaner Spiele', karten = ipv4Karten, intervall = 1000 }) {
   const cid = crypto.randomBytes(16), seq = new Map();
-  const st = { on: true, err: '', pakete: 0, universes: [] };
-  sock.on('error', (e) => { st.err = e.message; });
-  sock.bind(0, () => {
-    try { sock.setMulticastTTL(8); } catch {}
-    if (iface) { try { sock.setMulticastInterface(iface); } catch (e) { st.err = `Netzwerkkarte ${iface}: ${e.message}`; } }
-  });
+  const ziele = zielListe(ziel);
+  const st = { on: true, err: '', pakete: 0, universes: [], karten: [], unicast: ziele };
+  let socks = [], stand = null, offen = true;
+
+  const socket = (karte) => {
+    const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+    const k = { sock, karte, err: '' };
+    sock.on('error', (e) => { k.err = e.message; });
+    // Unicast über eine gewählte Karte: an deren Adresse binden; Multicast: Karte per setMulticastInterface
+    sock.bind(0, karte && ziele.length ? karte.address : undefined, () => {
+      try { sock.setMulticastTTL(8); } catch {}
+      if (karte && !ziele.length) { try { sock.setMulticastInterface(karte.address); } catch (e) { k.err = e.message; } }
+    });
+    return k;
+  };
+  const schliessen = () => { for (const k of socks) { try { k.sock.close(); } catch {} } socks = []; };
+  const name = (k) => k.karte ? `${k.karte.name} (${k.karte.address})` : 'System';
+
+  const pruefen = () => {
+    if (!offen) return;
+    const da = karten();
+    let wahl = da, fehler = '';
+    if (iface) {
+      wahl = da.filter((k) => k.address === iface);
+      if (!wahl.length) fehler = `Netzwerkkarte ${iface} ist nicht verbunden. Kabel prüfen oder eine andere Karte wählen.`;
+    } else if (!da.length && !ziele.length) fehler = 'Keine Netzwerkverbindung (keine Karte mit IPv4-Adresse).';
+    // Unicast braucht nur einen Socket; das System wählt die Karte über die Routen
+    if (ziele.length) wahl = iface ? wahl : [null];
+    const neu = wahl.map((k) => (k ? k.address : '')).join(',');
+    const kaputt = socks.filter((k) => k.err);
+    st.err = fehler || (socks.length && kaputt.length === socks.length ? kaputt.map((k) => (socks.length > 1 ? `${name(k)}: ` : '') + k.err).join(' · ') : '');
+    if (neu !== stand || kaputt.length) {
+      stand = neu;
+      schliessen();
+      socks = wahl.map(socket);
+    }
+    st.karten = socks.filter((k) => k.karte).map(name);
+  };
+
   const send = (px) => {
-    if (st.err) return;
+    if (!offen) return;
     const list = [];
     [[0, u1], [M, u2]].forEach(([xo, start]) => {
       universes(matrixDmx(px, xo), fpu).forEach((chunk, i) => {
@@ -88,13 +138,23 @@ function sacnSender({ iface, u1 = 1, u2 = 5, fpu = 144, quelle = 'Netzwerkplaner
         const s = ((seq.get(u) || 0) + 1) & 255;
         seq.set(u, s);
         list.push(u);
-        sock.send(sacnPaket(u, chunk, s, cid, quelle), 5568, multicast(u), (e) => { if (e) st.err = e.message; else st.pakete++; });
+        const paket = sacnPaket(u, chunk, s, cid, quelle);
+        for (const k of socks) {
+          if (k.err) continue;
+          for (const ip of ziele.length ? ziele : [multicast(u)]) {
+            k.sock.send(paket, 5568, ip, (e) => { if (e) { k.err = e.message; if (socks.every((x) => x.err)) st.err = e.message; } else st.pakete++; });
+          }
+        }
       });
     });
     st.universes = list;
   };
-  const stop = () => { st.on = false; try { sock.close(); } catch {} };
-  return { send, stop, st };
+
+  pruefen();
+  const timer = setInterval(pruefen, intervall);
+  if (timer.unref) timer.unref();
+  const stop = () => { offen = false; st.on = false; clearInterval(timer); schliessen(); };
+  return { send, stop, st, pruefen };
 }
 
 /* ── NDI-Sender (NDI Runtime per koffi, wie ctypes im Python-Original) ─── */
@@ -191,7 +251,7 @@ function createAusgabe(onStatus = () => {}, onAktiv = () => {}) {
     // sACN neu aufbauen, wenn sich etwas geändert hat
     if (JSON.stringify(alt.sacn) !== JSON.stringify(s) || (s.on && !sacn)) {
       if (sacn) { sacn.stop(); sacn = null; }
-      if (s.on) sacn = sacnSender({ iface: s.iface, u1: +s.u1 || 1, u2: +s.u2 || 5, fpu: +s.fpu || 144 });
+      if (s.on) sacn = sacnSender({ iface: s.iface, ziel: s.ziel, u1: +s.u1 || 1, u2: +s.u2 || 5, fpu: +s.fpu || 144 });
     }
     if (JSON.stringify(alt.ndi) !== JSON.stringify(n) || (n.on && !ndi)) {
       if (ndi) { ndi.stop(); ndi = null; }
@@ -235,4 +295,4 @@ function register(ipcMain, getWin) {
   return a;
 }
 
-module.exports = { register, createAusgabe, matrixDmx, universes, sacnPaket, multicast, ndiBild, sacnSender };
+module.exports = { register, createAusgabe, matrixDmx, universes, sacnPaket, multicast, ndiBild, sacnSender, zielListe };

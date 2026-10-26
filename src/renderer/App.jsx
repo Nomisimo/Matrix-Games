@@ -17,7 +17,7 @@ const LS = "matrixgames_einstellungen";
 // menue: Spielmenü auf der Matrix; leerlauf: Sekunden ohne Eingabe bis zur Demo (0 = nie);
 // comStaerke: Pong-Computer in %; vorhersage: Verzögerung der Ausgabe in ms (Snake); rekorde: Highscore je Spiel; aus: abgewählte Spiele (ids);
 // drehung: in welche Richtung die Wand für Hochkant-Spiele gedreht wird; sensor: HTTP-Endpoint für einen Drehsensor
-const STANDARD = { spiel: "snake", aus: [], ton: true, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games" } };
+const STANDARD = { spiel: "snake", aus: [], ton: true, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", ziel: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games" } };
 const laden = () => {
   try {
     const v = JSON.parse(localStorage.getItem(LS) || "null");
@@ -505,12 +505,16 @@ export default function App() {
                 <label style={{ ...S.field, gridColumn: "1 / -1" }}><span style={S.fieldLabel}>Netzwerkkarte</span>
                   <div style={{ display: "flex", gap: 6 }}>
                     <select style={S.selectSm} value={cfg.sacn.iface} onChange={(e) => set("sacn", { iface: e.target.value })}>
-                      <option value="">wie das System</option>
+                      <option value="">alle Netzwerkkarten</option>
                       {interfaces.map((i) => <option key={i.name + i.address} value={i.address}>{i.name} · {i.address}/{i.prefix}</option>)}
+                      {cfg.sacn.iface && !interfaces.some((i) => i.address === cfg.sacn.iface) && <option value={cfg.sacn.iface}>{cfg.sacn.iface} (nicht verbunden)</option>}
                     </select>
                     <button style={S.smallBtn} onClick={ladeIfaces} title="Liste neu laden"><RefreshCw size={12} /></button>
                   </div>
                 </label>
+                <label style={{ ...S.field, gridColumn: "1 / -1" }}><span style={S.fieldLabel}>Ziel-IP (Unicast)</span>
+                  <Feld value={cfg.sacn.ziel} placeholder="leer = Multicast 239.255.x.x" onChange={(ziel) => set("sacn", { ziel })} />
+                  <span className="sp-norm-hint">IP des Controllers, mehrere mit Komma. Hilft, wenn Multicast im Netz nicht ankommt.</span></label>
                 <label style={S.field}><span style={S.fieldLabel}>Matrix 1 ab Universe</span>
                   <input style={S.inputSm} type="number" min={1} max={63999} value={cfg.sacn.u1} onChange={(e) => set("sacn", { u1: +e.target.value })} /></label>
                 <label style={S.field}><span style={S.fieldLabel}>Matrix 2 ab Universe</span>
@@ -528,7 +532,7 @@ export default function App() {
               {ausgabeAn && (
                 <div style={{ marginTop: 14, borderTop: `1px solid ${LINE}`, paddingTop: 12, fontSize: 12, display: "grid", gap: 6 }}>
                   <div style={{ color: SUB }}>Bilder je Sekunde: <b style={{ color: TEXT2 }}>{status?.fps ?? 0}</b></div>
-                  {cfg.sacn.on && <Zeile ok={sacnSt?.on && !sacnSt?.err} text={sacnSt?.err ? `sACN: ${sacnSt.err}` : `sACN: Universes ${uni(cfg.sacn.u1)} und ${uni(cfg.sacn.u2)}, ${sacnSt?.pakete ?? 0} Pakete`} />}
+                  {cfg.sacn.on && <Zeile ok={sacnSt?.on && !sacnSt?.err} text={sacnSt?.err ? `sACN: ${sacnSt.err}` : `sACN: Universes ${uni(cfg.sacn.u1)} und ${uni(cfg.sacn.u2)}, ${sacnSt?.pakete ?? 0} Pakete${sacnSt?.unicast?.length ? ` an ${sacnSt.unicast.join(", ")}` : sacnSt?.karten?.length ? ` über ${sacnSt.karten.join(", ")}` : ""}`} />}
                   {cfg.ndi.on && <Zeile ok={ndiSt?.on && !ndiSt?.err} text={ndiSt?.err ? `NDI: ${ndiSt.err}` : ndiSt?.on ? `NDI: „${ndiSt.name}“, ${ndiSt.verbindungen} Empfänger verbunden` : "NDI: startet …"} />}
                 </div>
               )}
@@ -640,6 +644,14 @@ export default function App() {
       </Modal>}
     </div>
   );
+}
+
+// Textfeld, das erst beim Verlassen (oder Enter) übernimmt: sonst würde je Buchstabe neu aufgebaut
+function Feld({ value, onChange, placeholder }) {
+  const [v, setV] = useState(value || "");
+  useEffect(() => setV(value || ""), [value]);
+  const fertig = () => { const n = v.trim(); setV(n); if (n !== (value || "")) onChange(n); };
+  return <input style={S.inputSm} value={v} placeholder={placeholder} onChange={(e) => setV(e.target.value)} onBlur={fertig} />;
 }
 
 // Der NDI-Name gilt erst beim Verlassen des Felds (oder Enter): sonst entstünde je Buchstabe ein neuer Stream
