@@ -6,6 +6,11 @@ export const REPO = "Nomisimo/Matrix-Games";
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 
 export const CHANGELOG = {
+  "1.0.0-beta.5": [
+    "sACN: Fehler „send EADDRNOTAVAIL“ auf dem Mac behoben. „Alle Netzwerkkarten“ sendet jetzt auf jeder Karte mit eigener Multicast-Zuordnung, statt dem System die Wahl zu lassen",
+    "sACN: neues Feld Ziel-IP (Unicast) für Netze, in denen Multicast nicht ankommt",
+    "sACN: ein Netzwerkfehler hält die Ausgabe nicht mehr dauerhaft an; kommt die Karte zurück (Kabel, WLAN), sendet die App von selbst weiter. Die Statuszeile zeigt, über welche Karte gesendet wird",
+  ],
   "1.0.0-beta.4": [
     "Neues Spiel Tetris: hochkant über beide Matrizen, mit Demo, Schatten-Stein, nächstem Stein und Gamepad-Steuerung",
     "Matrix drehen: Hochkant-Spiele drehen die Wand um 90°, einstellbar ob links- oder rechtsrum, auch im Spielmenü (DREH); Testbild zum Ausrichten",

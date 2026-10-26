@@ -356,6 +356,43 @@ test("E1.31-Paket: Kopf, Universe, Länge", () => {
   assert.equal(ausgabe.multicast(300), "239.255.1.44");
 });
 
+test("sACN: fehlende Netzwerkkarte und kein Netz geben klare Fehler statt EADDRNOTAVAIL", () => {
+  const weg = ausgabe.sacnSender({ iface: "10.9.9.9", karten: () => [{ name: "en0", address: "192.168.1.5" }] });
+  assert.match(weg.st.err, /10\.9\.9\.9 ist nicht verbunden/);
+  weg.stop();
+  const keins = ausgabe.sacnSender({ karten: () => [] });
+  assert.match(keins.st.err, /Keine Netzwerkverbindung/);
+  keins.stop();
+  assert.deepEqual(ausgabe.zielListe("2.0.0.10, 2.0.0.11;x 300.1.1.1"), ["2.0.0.10", "2.0.0.11"]);
+});
+
+test("sACN: Unicast an die Ziel-IP kommt an, auch ohne Netzwerkkarte", async () => {
+  const dgram = require("dgram");
+  const rx = dgram.createSocket({ type: "udp4", reuseAddr: true });
+  await new Promise((r) => rx.bind(5568, "127.0.0.1", r));
+  const da = new Promise((r) => rx.once("message", (m) => r(m)));
+  const tx = ausgabe.sacnSender({ ziel: "127.0.0.1", u1: 29, u2: 33, karten: () => [] });
+  assert.equal(tx.st.err, "");
+  const b = new Bild();
+  const t = setInterval(() => tx.send(b.px), 20);
+  const m = await da;
+  clearInterval(t); tx.stop(); rx.close();
+  assert.equal(m.toString("latin1", 4, 13), "ASC-E1.17");
+  assert.ok([29, 30, 31, 32, 33, 34, 35, 36].includes(m.readUInt16BE(113)));
+});
+
+test("sACN: nach einem Sendefehler läuft die Ausgabe weiter", async () => {
+  const tx = ausgabe.sacnSender({ ziel: "127.0.0.1", karten: () => [], intervall: 1e9 });
+  await new Promise((r) => setTimeout(r, 20));
+  tx.st.err = "send EADDRNOTAVAIL 239.255.0.37:5568";
+  tx.pruefen();
+  const vorher = tx.st.pakete;
+  tx.send(new Bild().px);
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(tx.st.pakete > vorher, "nach dem Fehler wurden keine Pakete mehr gesendet");
+  tx.stop();
+});
+
 test("Universes je Matrix: 144 Fixtures → 4 Universes à 432 Kanäle", () => {
   const u = ausgabe.universes(new Uint8Array(1728), 144);
   assert.equal(u.length, 4);
