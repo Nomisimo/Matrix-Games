@@ -579,7 +579,7 @@ test("Spielmenü: wählt Spiel und Pong-Modus, Esc führt zurück", () => {
 });
 
 /* ── Tetris ─────────────────────────────────────────────────────────────── */
-import { TetrisRunde, ZELLEN, BREITE, HOEHE, LINIEN_PUNKTE, besteAblage, createTetrisDemo, createTetris, HW, HH } from "../src/shared/spiele/tetris.js";
+import { TetrisRunde, ZELLEN, BREITE, HOEHE, LINIEN_PUNKTE, FARBEN, SCHATTEN, besteAblage, createTetrisDemo, createTetris, HW, HH } from "../src/shared/spiele/tetris.js";
 import { dreheInQuer } from "../src/shared/spiele/pixel.js";
 
 test("Tetris: jede Drehung hat vier Felder, vier Drehungen ergeben wieder die Ausgangslage", () => {
@@ -669,6 +669,29 @@ test("Tetris: Spiel startet, Game Over zeigt Punkte und speichert den Rekord", (
   assert.ok(b.px.some((v) => v > 0));
   g.key("KeyX");
   assert.equal(g.state, "playing");
+});
+
+test("Tetris: Helligkeit des Schatten-Steins ist einstellbar, 0 schaltet ihn ab", () => {
+  const r = new TetrisRunde(() => {}, () => 0.5);
+  const gy = r.geisterY(), [x, y] = r.zellen({ ...r.stein, y: gy })[0];
+  const px = (b) => b.get(2 + x * 2, 7 + (y - 2) * 2);     // Spielfeld beginnt bei (2, 7), 2×2 Pixel je Feld
+  const c = FARBEN[r.stein.typ], b = new Bild(HW, HH);
+  r.render(b, false, 0.5);
+  assert.deepEqual(px(b), c.map((v) => Math.round(v * 0.5)));
+  r.render(b, false, 0);
+  assert.deepEqual(px(b), [0, 0, 0]);
+  r.render(b, false);
+  assert.deepEqual(px(b), c.map((v) => Math.round(v * SCHATTEN)));
+  // Das Spiel fragt den Wert bei jedem Bild ab
+  let s = 0.3;
+  const g = createTetris({ schatten: () => s });
+  g.key("Enter");
+  const q = new Bild(HW, HH), gr = g.spiel, [gx, gyy] = gr.zellen({ ...gr.stein, y: gr.geisterY() })[0];
+  g.render(q);
+  assert.deepEqual(q.get(2 + gx * 2, 7 + (gyy - 2) * 2), FARBEN[gr.stein.typ].map((v) => Math.round(v * 0.3)));
+  s = 0;
+  g.render(q);
+  assert.deepEqual(q.get(2 + gx * 2, 7 + (gyy - 2) * 2), [0, 0, 0]);
 });
 
 test("Tetris steht in der Spieleliste als Hochkant-Spiel", () => {

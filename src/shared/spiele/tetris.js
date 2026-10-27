@@ -57,6 +57,8 @@ export const fallTempo = (level) => FALL[level] ?? 1;
 export const LINIEN_PUNKTE = [0, 40, 100, 300, 1200];
 const LOCK = 30, LOCK_RESETS = 15, CLEAR_ZEIT = 20, DAS = 10, ARR = 3, SOFT = 2;
 const TOPOUT_ZEIT = 46;
+// Vorgabe für die Helligkeit des Schatten-Steins (Anteil der Steinfarbe)
+export const SCHATTEN = 0.12;
 
 const LINKS = ["ArrowLeft", "KeyA"], RECHTS = ["ArrowRight", "KeyD"], RUNTER = ["ArrowDown", "KeyS"];
 const DREHEN_R = new Set(["ArrowUp", "KeyW", "KeyX"]), DREHEN_L = new Set(["KeyZ", "KeyY", "ShiftLeft", "ShiftRight"]);
@@ -187,8 +189,9 @@ export class TetrisRunde {
     else if (code === "Space") this.hardDrop();
   }
 
-  /* Zeichnen auf ein Hochkant-Bild (24×48). hud: Punkte oben links; der nächste Stein steht immer oben rechts. */
-  render(b, hud = true) {
+  /* Zeichnen auf ein Hochkant-Bild (24×48). hud: Punkte oben links; der nächste Stein steht immer oben rechts.
+     schatten: Helligkeit des Schatten-Steins (wo der Stein landet), 0–1 der Steinfarbe; 0 = kein Schatten. */
+  render(b, hud = true, schatten = SCHATTEN) {
     b.fill(SCHWARZ);
     const rahmen = this.clearing?.reihen.length === 4 && (this.clearing.t >> 2) % 2 === 0 ? WEISS : RAHMEN[this.level % RAHMEN.length];
     b.rect(FX - 1, FY - 1, 1, HH - FY + 1, rahmen);
@@ -205,8 +208,11 @@ export class TetrisRunde {
     }
     if (!this.clearing && !this.tot) {
       const gy = this.geisterY(), c = FARBEN[this.stein.typ];
-      const geist = c.map((v) => v >> 3);
-      for (const [x, y] of this.zellen({ ...this.stein, y: gy })) feldPx(x, y, geist);
+      const s = Math.max(0, Math.min(1, +schatten || 0));
+      if (s > 0) {
+        const geist = c.map((v) => Math.round(v * s));
+        for (const [x, y] of this.zellen({ ...this.stein, y: gy })) feldPx(x, y, geist);
+      }
       for (const [x, y] of this.zellen()) feldPx(x, y, c);
     }
     // Nächster Stein: kleine Vorschau oben rechts (1 Pixel je Feld)
@@ -279,7 +285,7 @@ export function besteAblage(r, koennen = 1, rnd = Math.random) {
   return kandidaten[0];
 }
 
-export function createTetrisDemo({ koennen = () => 1, drehung = () => "rechts", rnd = Math.random } = {}) {
+export function createTetrisDemo({ koennen = () => 1, drehung = () => "rechts", schatten = () => SCHATTEN, rnd = Math.random } = {}) {
   const hoch = new Bild(HW, HH);
   // Startlevel steigt mit dem Können: bei 100 % fallen die Steine schneller
   const neu = () => new TetrisRunde(() => {}, rnd, Math.round(Math.max(0, Math.min(1, koennen())) * 5));
@@ -299,13 +305,14 @@ export function createTetrisDemo({ koennen = () => 1, drehung = () => "rechts", 
       }
       if (r.update(new Set()) === "over") pause = 90;
     },
-    render(b) { zeichne(b, hoch, drehung, (h) => r.render(h, false)); },
+    render(b) { zeichne(b, hoch, drehung, (h) => r.render(h, false, schatten())); },
     get runde() { return r; },
   };
 }
 
-// rekord: { get, set } für den gespeicherten Highscore; drehung: () => "rechts" | "links"
-export function createTetris({ ton = () => {}, rekord, drehung = () => "rechts" } = {}) {
+// rekord: { get, set } für den gespeicherten Highscore; drehung: () => "rechts" | "links";
+// schatten: () => Helligkeit des Schatten-Steins (0–1)
+export function createTetris({ ton = () => {}, rekord, drehung = () => "rechts", schatten = () => SCHATTEN } = {}) {
   let state = "title", game = null, blink = 0, neuerRekord = false, eigener = 0, ende = 0;
   rekord ||= { get: () => eigener, set: (n) => { eigener = n; } };
   const hoch = new Bild(HW, HH);
@@ -344,7 +351,7 @@ export function createTetris({ ton = () => {}, rekord, drehung = () => "rechts" 
           TYPEN.forEach((t, i) => { const [x, y] = [2 + (i % 4) * 5, 20 + fdiv(i, 4) * 6]; for (const [cx, cy] of ZELLEN[t][0]) h.set(x + cx, y + cy, FARBEN[t]); });
           if (fdiv(blink, 30) % 2 === 0) zentriert(h, "START", 36, PUNKTE_FARBE);
         } else if (state === "playing") {
-          game.render(h);
+          game.render(h, true, schatten());
           if (pause) {
             for (let i = 0; i < h.px.length; i++) h.px[i] >>= 2;
             h.rect(0, 19, HW, 9, SCHWARZ);
@@ -352,7 +359,7 @@ export function createTetris({ ton = () => {}, rekord, drehung = () => "rechts" 
           }
         } else if (ende <= TOPOUT_ZEIT) {
           // Spielende: das Feld füllt sich von unten grau
-          game.render(h);
+          game.render(h, true, schatten());
           const reihen = Math.min(20, fdiv(ende, 2));
           for (let i = 0; i < reihen; i++) h.rect(FX, HH - 1 - (i + 1) * Z, BREITE * Z, Z, GRAU);
         } else {
