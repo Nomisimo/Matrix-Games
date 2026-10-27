@@ -6,6 +6,9 @@ export const REPO = "Nomisimo/Matrix-Games";
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 
 export const CHANGELOG = {
+  "1.0.0-beta.5": [
+    "Tetris: Helligkeit des Schatten-Steins (Landevorschau) per Regler in den Einstellungen, 0 schaltet ihn ab; gilt sofort im Spiel und in der Demo",
+  ],
   "1.0.0-beta.4": [
     "Neues Spiel Tetris: hochkant über beide Matrizen, mit Demo, Schatten-Stein, nächstem Stein und Gamepad-Steuerung",
     "Matrix drehen: Hochkant-Spiele drehen die Wand um 90°, einstellbar ob links- oder rechtsrum, auch im Spielmenü (DREH); Testbild zum Ausrichten",
