@@ -7,8 +7,12 @@
    auf die Matrix, rollt die Liste mit. key() gibt zurück, was passieren soll:
    { start: id, taste } (Spiel wählen und mit dieser Taste aus der Demo starten),
    { drehung: "links" | "rechts" } oder { zurueck: true }. verfuegbar (Liste von ids)
-   blendet abgewählte Spiele aus; „DREH“ bleibt immer. */
+   blendet abgewählte Spiele aus; „DREH“ bleibt immer. Ist nur ein Spiel verfügbar, gibt es
+   kein Menü: der Start aus der Demo startet gleich dieses Spiel (menueZeigen). */
 import { FONT } from "./mario/index.js";
+
+// Menü nur, wenn es eingeschaltet ist und es mehr als ein Spiel zur Wahl gibt
+export const menueZeigen = (an, verfuegbar = []) => !!an && verfuegbar.length > 1;
 
 const ALLE = [
   { id: "snake", name: "SNAKE", farbe: [0, 255, 80] },
