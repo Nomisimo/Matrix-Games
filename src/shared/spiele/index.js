@@ -131,5 +131,5 @@ export const SPIELE = [
     gamepad: [["A", "Start (aus der Demo), Drehen rechtsrum"], ["B / X", "Drehen linksrum"], ["Y", "Fallen lassen (Hard Drop)"], ["Steuerkreuz ← / →", "Schieben (halten = weiter)"], ["Steuerkreuz ↑", "Drehen rechtsrum"], ["Steuerkreuz ↓", "Schneller fallen"], ...PAD_ALLGEMEIN],
     pads: "Bei Tetris: A dreht rechtsrum, B dreht linksrum, Y lässt den Stein fallen, ↓ lässt ihn schneller fallen.",
     ziel: "Lege die fallenden Steine so, dass waagerechte Reihen lückenlos voll werden. Volle Reihen verschwinden und bringen Punkte, vier auf einmal (ein Tetris) die meisten. Alle 10 Reihen steigt das Level und die Steine fallen schneller. Die Runde endet, wenn sich die Steine bis oben stapeln. Tetris ist ein Hochkant-Spiel: die beiden Matrizen stehen dafür übereinander.",
-    tipps: ["Oben rechts steht der nächste Stein.", "Der blasse Schatten zeigt, wo der Stein landet.", "Am Boden bleibt eine halbe Sekunde Zeit, den Stein noch zu schieben oder zu drehen."] },
+    tipps: ["Oben rechts steht der nächste Stein.", "Der blasse Schatten zeigt, wo der Stein landet. Wie hell er ist, lässt sich in den Einstellungen ändern.", "Am Boden bleibt eine halbe Sekunde Zeit, den Stein noch zu schieben oder zu drehen."] },
 ];

@@ -15,9 +15,9 @@ const APP_ICON = `data:image/svg+xml;utf8,${encodeURIComponent(APP_ICON_SVG)}`;
 const LS = "matrixgames_einstellungen";
 // Vorgaben wie im Snake-Original auf der echten Matrix (Universe 29 und 33, 144 Pixel je Universe)
 // menue: Spielmenü auf der Matrix; leerlauf: Sekunden ohne Eingabe bis zur Demo (0 = nie);
-// comStaerke: Pong-Computer in %; vorhersage: Verzögerung der Ausgabe in ms (Snake); rekorde: Highscore je Spiel; aus: abgewählte Spiele (ids);
+// comStaerke: Pong-Computer in %; tetrisSchatten: Helligkeit des Tetris-Schattens in % der Steinfarbe; vorhersage: Verzögerung der Ausgabe in ms (Snake); rekorde: Highscore je Spiel; aus: abgewählte Spiele (ids);
 // drehung: in welche Richtung die Wand für Hochkant-Spiele gedreht wird; sensor: HTTP-Endpoint für einen Drehsensor
-const STANDARD = { spiel: "snake", aus: [], ton: true, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games" } };
+const STANDARD = { spiel: "snake", aus: [], ton: true, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, tetrisSchatten: 12, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games" } };
 const laden = () => {
   try {
     const v = JSON.parse(localStorage.getItem(LS) || "null");
@@ -202,6 +202,7 @@ export default function App() {
       leerlauf: () => cfgRef.current.leerlauf,
       vorhersage: () => vorhersageRef.current ?? 0,
       comStaerke: () => (cfgRef.current.comStaerke ?? 60) / 100,
+      schatten: () => (cfgRef.current.tetrisSchatten ?? 12) / 100,
       rekord: {
         get: () => cfgRef.current.rekorde?.[def.id] || 0,
         set: (n) => setCfg((c) => ({ ...c, rekorde: { ...c.rekorde, [def.id]: n } })),
@@ -589,6 +590,12 @@ export default function App() {
                   <b style={{ width: 52, textAlign: "right", color: ACCENT, fontSize: 12 }}>{cfg.comStaerke} %</b>
                 </div>
                 <span className="sp-norm-hint">{cfg.comStaerke < 30 ? "Leicht: langsam und reagiert spät." : cfg.comStaerke < 60 ? "Mittel: etwas langsamer als das Original." : cfg.comStaerke === 60 ? "Normal: wie das Original." : cfg.comStaerke < 90 ? "Schwer: schneller und rechnet aus, wo der Ball ankommt." : "Sehr schwer: kaum zu schlagen."}</span></label>
+              <label style={{ ...S.field, marginTop: 10 }}><span style={S.fieldLabel}>Tetris: Helligkeit des Schattens</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <input type="range" min={0} max={80} step={2} value={cfg.tetrisSchatten} onChange={(e) => set("tetrisSchatten", +e.target.value)} style={{ flex: 1, accentColor: ACCENT }} />
+                  <b style={{ width: 52, textAlign: "right", color: ACCENT, fontSize: 12 }}>{cfg.tetrisSchatten ? `${cfg.tetrisSchatten} %` : "aus"}</b>
+                </div>
+                <span className="sp-norm-hint">{cfg.tetrisSchatten ? "Der blasse Stein unten zeigt, wo der fallende Stein landet. Der Wert ist die Helligkeit im Vergleich zum echten Stein; wirkt sofort, auch in der Demo." : "Aus: kein Schatten, man sieht nicht vorher, wo der Stein landet."}</span></label>
             </div>
 
             <div style={{ ...S.section, padding: 16 }}>
