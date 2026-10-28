@@ -9,6 +9,34 @@ const path = require('path');
 
 const W = 48, H = 24, M = 24; // Leinwand und Kantenlänge einer Matrix
 
+/* ── Hälften einzeln drehen und spiegeln ──────────────────────────────────
+   Jede Matrix kann anders verbaut sein. lagen = [Matrix 1, Matrix 2], je { dreh: 0 | 90 | 180 | 270, spiegeln }:
+   erst wird die Hälfte waagrecht gespiegelt, dann im Uhrzeigersinn gedreht. Gilt für sACN und NDI;
+   das Spiel und die Live-Ansicht bleiben unverändert. Ohne Drehen und Spiegeln: px selbst zurück. */
+const DREH = [0, 90, 180, 270];
+const lageVon = (l) => ({ dreh: DREH.includes(+l?.dreh) ? +l.dreh : 0, spiegeln: !!l?.spiegeln });
+function haelftenAusrichten(px, lagen = [], out = null) {
+  const ls = [lageVon(lagen[0]), lageVon(lagen[1])];
+  if (ls.every((l) => !l.dreh && !l.spiegeln)) return px;
+  out = out || new Uint8Array(W * H * 3);
+  ls.forEach(({ dreh, spiegeln }, i) => {
+    const xo = i * M, n = M - 1;
+    for (let y = 0; y < M; y++) {
+      for (let x = 0; x < M; x++) {
+        // Ziel (x, y) → Stelle im gespiegelten Bild (u, v), dann zurück ins Original
+        let u = x, v = y;
+        if (dreh === 90) { u = y; v = n - x; }
+        else if (dreh === 180) { u = n - x; v = n - y; }
+        else if (dreh === 270) { u = n - y; v = x; }
+        if (spiegeln) u = n - u;
+        const s = (v * W + xo + u) * 3, d = (y * W + xo + x) * 3;
+        out[d] = px[s]; out[d + 1] = px[s + 1]; out[d + 2] = px[s + 2];
+      }
+    }
+  });
+  return out;
+}
+
 /* ── sACN: Leinwand → DMX ────────────────────────────────────────────────
    Je Matrix 24×24 px aus 36 Kacheln à 4×4, Kacheln spaltenweise nummeriert
    (tile = Spalte·6 + Reihe), Pixel in der Kachel zeilenweise. Wie sacn_output.py. */
@@ -185,6 +213,7 @@ function ndiSender({ name = 'Matrix Games', faktor = 10, pixel = faktor }) {
 /* ── Verwaltung & IPC ───────────────────────────────────────────────────── */
 function createAusgabe(onStatus = () => {}, onAktiv = () => {}) {
   let sacn = null, ndi = null, cfg = {}, ndiFehler = '';
+  const gedreht = new Uint8Array(W * H * 3);
   let bilder = 0, letzteRate = 0, letzteZeit = Date.now();
 
   const status = () => ({
@@ -216,6 +245,7 @@ function createAusgabe(onStatus = () => {}, onAktiv = () => {}) {
   const frame = (px) => {
     if (!px || px.length !== W * H * 3) return;
     bilder++;
+    if (sacn || ndi) px = haelftenAusrichten(px, cfg.haelften, gedreht);
     if (sacn) sacn.send(px);
     if (ndi) ndi.send(px);
   };
@@ -246,4 +276,4 @@ function register(ipcMain, getWin) {
   return a;
 }
 
-module.exports = { register, createAusgabe, matrixDmx, universes, sacnPaket, multicast, ndiBild, sacnSender };
+module.exports = { register, createAusgabe, haelftenAusrichten, matrixDmx, universes, sacnPaket, multicast, ndiBild, sacnSender };

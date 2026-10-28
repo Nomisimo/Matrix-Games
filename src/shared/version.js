@@ -6,6 +6,9 @@ export const REPO = "Nomisimo/Matrix-Games";
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 
 export const CHANGELOG = {
+  "1.0.0-beta.7": [
+    "Matrix drehen: jede der beiden Matrizen einzeln um 0°, 90°, 180° oder 270° drehen und spiegeln, für Hälften, die anders verbaut sind; gilt für sACN und NDI, mit dem Testbild auszurichten",
+  ],
   "1.0.0-beta.6": [
     "NDI: Größe der Pixel im NDI-Bild per Regler (10×10 bis 1×1); kleinere Pixel sitzen mittig im 10×10-Feld mit schwarzem Rand, damit das Pixel-Mapping (z. B. grandMA3) keine grauen Geisterpixel neben farbigen Pixeln abtastet. Wirkt sofort, ohne den Stream neu zu starten",
   ],

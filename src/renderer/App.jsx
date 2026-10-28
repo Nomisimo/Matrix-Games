@@ -8,7 +8,7 @@ import { api, isElectron } from "./api.js";
 import { createTon } from "./spiele/ton.js";
 import { Toggle, Dot, Card, Table, td, Hint, Modal } from "./ui.jsx";
 import { CHANGELOG, compareVersions, neuesteVersion, istBeta, RELEASES_URL } from "../shared/version.js";
-import { Volume2, VolumeX, RotateCcw, RefreshCw, TriangleAlert, Gamepad2, Sun, Moon, Monitor, Power, Keyboard, ArrowUpCircle, Download, Pause, Play, Trophy, FileDown, RotateCw, Compass } from "lucide-react";
+import { Volume2, VolumeX, RotateCcw, RefreshCw, TriangleAlert, Gamepad2, Sun, Moon, Monitor, Power, Keyboard, ArrowUpCircle, Download, Pause, Play, Trophy, FileDown, RotateCw, Compass, FlipHorizontal2 } from "lucide-react";
 import APP_ICON_SVG from "../../assets/app-icon/icon.svg";
 const APP_ICON = `data:image/svg+xml;utf8,${encodeURIComponent(APP_ICON_SVG)}`;
 
@@ -17,11 +17,12 @@ const LS = "matrixgames_einstellungen";
 // menue: Spielmenü auf der Matrix; leerlauf: Sekunden ohne Eingabe bis zur Demo (0 = nie);
 // comStaerke: Pong-Computer in %; tetrisSchatten: Helligkeit des Tetris-Schattens in % der Steinfarbe; vorhersage: Verzögerung der Ausgabe in ms (Snake); rekorde: Highscore je Spiel; aus: abgewählte Spiele (ids);
 // drehung: in welche Richtung die Wand für Hochkant-Spiele gedreht wird; sensor: HTTP-Endpoint für einen Drehsensor
-const STANDARD = { spiel: "snake", aus: [], ton: true, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, tetrisSchatten: 12, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games", pixel: 10 } };
+const STANDARD = { spiel: "snake", aus: [], ton: true, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, tetrisSchatten: 12, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games", pixel: 10 }, haelften: [{ dreh: 0, spiegeln: false }, { dreh: 0, spiegeln: false }] };
 const laden = () => {
   try {
     const v = JSON.parse(localStorage.getItem(LS) || "null");
-    return v ? { ...STANDARD, ...v, aus: Array.isArray(v.aus) ? v.aus : [], rekorde: { ...v.rekorde }, sensor: { ...STANDARD.sensor, ...v.sensor }, sacn: { ...STANDARD.sacn, ...v.sacn }, ndi: { ...STANDARD.ndi, ...v.ndi } } : STANDARD;
+    return v ? { ...STANDARD, ...v, aus: Array.isArray(v.aus) ? v.aus : [], rekorde: { ...v.rekorde }, sensor: { ...STANDARD.sensor, ...v.sensor }, sacn: { ...STANDARD.sacn, ...v.sacn }, ndi: { ...STANDARD.ndi, ...v.ndi },
+      haelften: STANDARD.haelften.map((h, i) => ({ ...h, ...(Array.isArray(v.haelften) ? v.haelften[i] : null) })) } : STANDARD;
   } catch { return STANDARD; }
 };
 
@@ -139,6 +140,8 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem(LS, JSON.stringify(cfg)); } catch {} }, [cfg]);
   useEffect(() => { api.appVersion().then(setVersion); }, []);
   const set = (k, v) => setCfg((c) => ({ ...c, [k]: typeof v === "object" ? { ...c[k], ...v } : v }));
+  const setHaelfte = (i, v) => setCfg((c) => ({ ...c, haelften: c.haelften.map((h, j) => (j === i ? { ...h, ...v } : h)) }));
+  const haelftenGedreht = cfg.haelften.some((h) => h.dreh || h.spiegeln);
 
   /* ── Versionen: beim Start prüfen, ob auf GitHub eine neuere Version liegt (wie im Netzwerkplaner) ── */
   const checkUpdate = useCallback(async (manuell = false) => {
@@ -177,8 +180,8 @@ export default function App() {
 
   // Ausgabe im Hauptprozess (sACN/NDI) an die Einstellungen anpassen
   useEffect(() => {
-    if (isElectron) api.ausgabe({ sacn: cfg.sacn, ndi: cfg.ndi }).then(setStatus);
-  }, [JSON.stringify(cfg.sacn), JSON.stringify(cfg.ndi)]);
+    if (isElectron) api.ausgabe({ sacn: cfg.sacn, ndi: cfg.ndi, haelften: cfg.haelften }).then(setStatus);
+  }, [JSON.stringify(cfg.sacn), JSON.stringify(cfg.ndi), JSON.stringify(cfg.haelften)]);
   useEffect(() => api.onStatus(setStatus), []);
 
   // Drehsensor: Endpoint im Hauptprozess ein- und ausschalten; die Antwort nennt auch, was das Spiel braucht
@@ -563,6 +566,28 @@ export default function App() {
               {testbildAn && <span className="sp-norm-hint">Das Spiel wartet, solange das Testbild läuft. Es gilt für die Lage, die {def.name} braucht.</span>}
 
               <div style={{ marginTop: 14, borderTop: `1px solid ${LINE}`, paddingTop: 12 }}>
+                <span style={S.fieldLabel}>Jede Matrix einzeln drehen und spiegeln</span>
+                {cfg.haelften.map((h, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                    <span style={{ width: 62, fontSize: 12, color: TEXT2, fontWeight: 600 }}>Matrix {i + 1}</span>
+                    <div style={{ display: "flex", flex: 1, border: `1px solid ${LINE}`, borderRadius: 6, overflow: "hidden" }}>
+                      {[0, 90, 180, 270].map((g) => (
+                        <button key={g} onClick={(e) => { e.currentTarget.blur(); setHaelfte(i, { dreh: g }); }}
+                          title={g ? `Bild dieser Matrix um ${g}° im Uhrzeigersinn drehen` : "Nicht drehen"}
+                          style={{ flex: 1, background: h.dreh === g ? ACCENT : "transparent", color: h.dreh === g ? "#fff" : SUB, border: "none", padding: "6px 4px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>{g}°</button>
+                      ))}
+                    </div>
+                    <button onClick={(e) => { e.currentTarget.blur(); setHaelfte(i, { spiegeln: !h.spiegeln }); }} title="Bild dieser Matrix waagrecht spiegeln (links und rechts tauschen)"
+                      style={{ ...S.smallBtn, padding: "6px 9px", ...(h.spiegeln ? { background: ACCENT, color: "#fff", borderColor: ACCENT } : {}) }}><FlipHorizontal2 size={13} /> Spiegeln</button>
+                  </div>
+                ))}
+                <span className="sp-norm-hint">
+                  Für Matrizen, die gedreht oder gespiegelt verbaut sind: das Bild jeder Hälfte wird im Uhrzeigersinn gedreht und vorher gespiegelt, bevor es per sACN und NDI hinausgeht. 180° und Spiegeln zusammen spiegeln senkrecht. Mit dem Testbild ausrichten: Nummer und Pfeil stehen aufrecht, die rote Ecke ist oben links.
+                </span>
+                {haelftenGedreht && <button style={{ ...S.smallBtn, marginTop: 8 }} onClick={() => setCfg((c) => ({ ...c, haelften: STANDARD.haelften }))}><RotateCcw size={12} /> Zurücksetzen</button>}
+              </div>
+
+              <div style={{ marginTop: 14, borderTop: `1px solid ${LINE}`, paddingTop: 12 }}>
                 <Toggle checked={cfg.sensor.on} disabled={!isElectron} onChange={(v) => set("sensor", { on: v })} label="Drehsensor verwenden" />
                 <span className="sp-norm-hint">Ein Sensor an der Wand meldet per HTTP, wie sie steht. Passt das nicht zum gewählten Spiel, zeigt die Matrix „Matrix drehen“ und das Spiel wartet.</span>
                 {cfg.sensor.on && <>
@@ -631,7 +656,7 @@ export default function App() {
               </div> : <div style={{ textAlign: "center", fontSize: 11, color: MUTED, marginTop: 6 }}>
                 Hochkant {wandLage === "links" ? "nach links" : "nach rechts"} gedreht: oben Matrix {wandLage === "links" ? 2 : 1}, unten Matrix {wandLage === "links" ? 1 : 2}
               </div>}
-              <Hint>So sieht das Bild auf den Matrizen aus: genau dieser Stand geht per sACN und NDI hinaus.{cfg.schwarz ? " Gerade dunkel geschaltet." : ""}</Hint>
+              <Hint>So sieht das Bild auf den Matrizen aus: genau dieser Stand geht per sACN und NDI hinaus.{haelftenGedreht ? ` Gedreht oder gespiegelt wird erst für die Ausgabe (${cfg.haelften.map((h, i) => `Matrix ${i + 1}: ${h.dreh}°${h.spiegeln ? ", gespiegelt" : ""}`).join("; ")}).` : ""}{cfg.schwarz ? " Gerade dunkel geschaltet." : ""}</Hint>
             </div>
           </div>
         </div>
