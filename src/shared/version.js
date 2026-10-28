@@ -6,6 +6,9 @@ export const REPO = "Nomisimo/Matrix-Games";
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 
 export const CHANGELOG = {
+  "1.0.0-beta.6": [
+    "NDI: Größe der Pixel im NDI-Bild per Regler (10×10 bis 1×1); kleinere Pixel sitzen mittig im 10×10-Feld mit schwarzem Rand, damit das Pixel-Mapping (z. B. grandMA3) keine grauen Geisterpixel neben farbigen Pixeln abtastet. Wirkt sofort, ohne den Stream neu zu starten",
+  ],
   "1.0.0-beta.5": [
     "Tetris: Helligkeit des Schatten-Steins (Landevorschau) per Regler in den Einstellungen, 0 schaltet ihn ab; gilt sofort im Spiel und in der Demo",
   ],

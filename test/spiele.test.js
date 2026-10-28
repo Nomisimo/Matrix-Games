@@ -375,6 +375,28 @@ test("NDI-Bild: 10× hochskaliert, BGRA", () => {
   assert.deepEqual([...f.slice((9 * 480) * 4, (9 * 480) * 4 + 4)], [30, 20, 10, 255]);
 });
 
+test("NDI-Bild: kleinere Pixel mittig im 10×10-Feld, Rand schwarz", () => {
+  const b = new Bild();
+  b.set(1, 0, [10, 20, 30]);
+  const px = (f, x, y) => [...f.slice((y * 480 + x) * 4, (y * 480 + x) * 4 + 4)];
+  const f9 = ausgabe.ndiBild(b.px, 10, null, 9);
+  assert.deepEqual(px(f9, 10, 0), [30, 20, 10, 255]);
+  assert.deepEqual(px(f9, 18, 8), [30, 20, 10, 255]);
+  assert.deepEqual(px(f9, 19, 0), [0, 0, 0, 255]);
+  assert.deepEqual(px(f9, 10, 9), [0, 0, 0, 255]);
+  const f2 = ausgabe.ndiBild(b.px, 10, null, 2);
+  assert.deepEqual(px(f2, 14, 4), [30, 20, 10, 255]);
+  assert.deepEqual(px(f2, 15, 5), [30, 20, 10, 255]);
+  assert.deepEqual(px(f2, 13, 4), [0, 0, 0, 255]);
+  assert.deepEqual(px(f2, 16, 4), [0, 0, 0, 255]);
+  const f1 = ausgabe.ndiBild(b.px, 10, null, 1);
+  assert.equal(f1.filter((v, i) => i % 4 === 0 && v).length, 1);
+  // Puffer wird wiederverwendet: alte Farbe muss beim Verkleinern verschwinden
+  const out = ausgabe.ndiBild(b.px, 10);
+  ausgabe.ndiBild(b.px, 10, out, 1);
+  assert.deepEqual(px(out, 10, 0), [0, 0, 0, 255]);
+});
+
 /* ── Versionen (Update-Hinweis) ─────────────────────────────────────────── */
 test("Versionen: Betas vor der fertigen Version, neueste aus der Release-Liste", () => {
   assert.ok(compareVersions("1.0.0-beta.2", "1.0.0-beta.1") > 0);

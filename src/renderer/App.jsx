@@ -17,7 +17,7 @@ const LS = "matrixgames_einstellungen";
 // menue: Spielmenü auf der Matrix; leerlauf: Sekunden ohne Eingabe bis zur Demo (0 = nie);
 // comStaerke: Pong-Computer in %; tetrisSchatten: Helligkeit des Tetris-Schattens in % der Steinfarbe; vorhersage: Verzögerung der Ausgabe in ms (Snake); rekorde: Highscore je Spiel; aus: abgewählte Spiele (ids);
 // drehung: in welche Richtung die Wand für Hochkant-Spiele gedreht wird; sensor: HTTP-Endpoint für einen Drehsensor
-const STANDARD = { spiel: "snake", aus: [], ton: true, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, tetrisSchatten: 12, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games" } };
+const STANDARD = { spiel: "snake", aus: [], ton: true, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, tetrisSchatten: 12, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games", pixel: 10 } };
 const laden = () => {
   try {
     const v = JSON.parse(localStorage.getItem(LS) || "null");
@@ -524,7 +524,13 @@ export default function App() {
               <Toggle checked={cfg.ndi.on} disabled={!isElectron} onChange={(v) => set("ndi", { on: v })} label="NDI-Stream senden" />
               <label style={{ ...S.field, margin: "10px 0 4px" }}><span style={S.fieldLabel}>Name des NDI-Streams</span>
                 <NdiName value={cfg.ndi.name} onChange={(name) => set("ndi", { name })} /></label>
-              <span className="sp-norm-hint">480×240 px BGRA, 60 fps (jedes Pixel 10×10). Braucht die NDI Runtime (ndi.video/tools).</span>
+              <label style={{ ...S.field, marginTop: 10 }}><span style={S.fieldLabel}>Größe der Pixel im NDI-Bild</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <input type="range" min={1} max={10} step={1} value={cfg.ndi.pixel ?? 10} onChange={(e) => set("ndi", { pixel: +e.target.value })} style={{ flex: 1, accentColor: ACCENT }} />
+                  <b style={{ width: 52, textAlign: "right", color: ACCENT, fontSize: 12 }}>{cfg.ndi.pixel ?? 10}×{cfg.ndi.pixel ?? 10}</b>
+                </div>
+                <span className="sp-norm-hint">{(cfg.ndi.pixel ?? 10) >= 10 ? "10×10: jedes Pixel füllt sein Feld ganz aus (wie bisher)." : "Jedes Pixel sitzt mittig in seinem 10×10-Feld, der Rand bleibt schwarz. Hilft, wenn das Pixel-Mapping am Rand abtastet und neben farbigen Pixeln graue Geisterpixel zeigt; wirkt sofort, ohne den Stream neu zu starten."}</span></label>
+              <span className="sp-norm-hint">480×240 px BGRA, 60 fps (jedes Pixel ein 10×10-Feld). Braucht die NDI Runtime (ndi.video/tools).</span>
 
               {ausgabeAn && (
                 <div style={{ marginTop: 14, borderTop: `1px solid ${LINE}`, paddingTop: 12, fontSize: 12, display: "grid", gap: 6 }}>
