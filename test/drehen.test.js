@@ -137,3 +137,38 @@ test("Ausgabe-Puffer nach dem Drehen hat die Größe, die sACN erwartet", () => 
   const out = drehe(new Bild(...HOCHKANT), "rechts");
   assert.equal(ausgabe.matrixDmx(out, 0).length, 24 * 24 * 3);
 });
+
+test("Hälften einzeln drehen und spiegeln: nur die Ausgabe, jede Matrix für sich", () => {
+  const b = new Bild();
+  b.set(0, 0, [255, 0, 0]);    // Matrix 1 oben links
+  b.set(24, 0, [0, 255, 0]);   // Matrix 2 oben links
+  b.set(1, 0, [0, 0, 255]);    // Matrix 1 rechts neben der Ecke
+  // Ohne Drehen und Spiegeln bleibt alles, wie es ist
+  assert.equal(ausgabe.haelftenAusrichten(b.px, [{ dreh: 0 }, {}]), b.px);
+  // Matrix 1 um 90° im Uhrzeigersinn: oben links → oben rechts, der Nachbar rutscht nach unten
+  let o = ausgabe.haelftenAusrichten(b.px, [{ dreh: 90 }, { dreh: 0 }]);
+  assert.deepEqual(px(o, 23, 0), [255, 0, 0]);
+  assert.deepEqual(px(o, 23, 1), [0, 0, 255]);
+  assert.deepEqual(px(o, 24, 0), [0, 255, 0]);   // Matrix 2 bleibt
+  // 180° auf Matrix 2: oben links → unten rechts der rechten Hälfte
+  o = ausgabe.haelftenAusrichten(b.px, [{}, { dreh: 180 }]);
+  assert.deepEqual(px(o, 47, 23), [0, 255, 0]);
+  assert.deepEqual(px(o, 0, 0), [255, 0, 0]);
+  // 270°: oben links → unten links
+  o = ausgabe.haelftenAusrichten(b.px, [{ dreh: 270 }, {}]);
+  assert.deepEqual(px(o, 0, 23), [255, 0, 0]);
+  assert.deepEqual(px(o, 0, 22), [0, 0, 255]);
+  // Spiegeln: oben links → oben rechts derselben Hälfte, nichts springt in die andere Hälfte
+  o = ausgabe.haelftenAusrichten(b.px, [{ spiegeln: true }, { spiegeln: true }]);
+  assert.deepEqual(px(o, 23, 0), [255, 0, 0]);
+  assert.deepEqual(px(o, 22, 0), [0, 0, 255]);
+  assert.deepEqual(px(o, 47, 0), [0, 255, 0]);
+  // Spiegeln und 90°: erst spiegeln (Ecke oben rechts), dann drehen → unten rechts
+  o = ausgabe.haelftenAusrichten(b.px, [{ dreh: 90, spiegeln: true }, {}]);
+  assert.deepEqual(px(o, 23, 23), [255, 0, 0]);
+  // Unbekannte Werte zählen als 0°, der Puffer wird wiederverwendet
+  const puffer = new Uint8Array(48 * 24 * 3);
+  assert.equal(ausgabe.haelftenAusrichten(b.px, [{ dreh: 45, spiegeln: true }], puffer), puffer);
+  assert.deepEqual(px(puffer, 23, 0), [255, 0, 0]);
+  assert.equal(ausgabe.haelftenAusrichten(b.px, [{ dreh: "x" }]), b.px);
+});
