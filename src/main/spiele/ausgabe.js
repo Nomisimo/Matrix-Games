@@ -54,15 +54,22 @@ function sacnPaket(universe, data, seq, cid, quelle) {
   return p;
 }
 
-// NDI-Bild: Faktor-fach mit nächstem Nachbarn hochskaliert, BGRA (wie ndi_output.py: 480×240)
-function ndiBild(px, f = 10, out = null) {
+// NDI-Bild: Faktor-fach mit nächstem Nachbarn hochskaliert, BGRA (wie ndi_output.py: 480×240).
+// groesse < f: jedes Pixel nur groesse×groesse mittig in seinem f×f-Feld, der Rand bleibt schwarz.
+// So tastet das Pixel-Mapping (z. B. grandMA3) keine verwaschene Kante zum Nachbarpixel ab.
+function ndiBild(px, f = 10, out = null, groesse = f) {
   const ow = W * f, oh = H * f;
+  const g = Math.max(1, Math.min(f, groesse | 0)), rand = (f - g) >> 1;
   out = out || Buffer.alloc(ow * oh * 4);
   for (let y = 0; y < oh; y++) {
-    const sy = (y / f) | 0;
+    const sy = (y / f) | 0, iy = y - sy * f, zeile = iy >= rand && iy < rand + g;
     for (let x = 0; x < ow; x++) {
-      const s = (sy * W + ((x / f) | 0)) * 3, d = (y * ow + x) * 4;
-      out[d] = px[s + 2]; out[d + 1] = px[s + 1]; out[d + 2] = px[s]; out[d + 3] = 255;
+      const sx = (x / f) | 0, ix = x - sx * f, d = (y * ow + x) * 4;
+      if (zeile && ix >= rand && ix < rand + g) {
+        const s = (sy * W + sx) * 3;
+        out[d] = px[s + 2]; out[d + 1] = px[s + 1]; out[d + 2] = px[s];
+      } else { out[d] = 0; out[d + 1] = 0; out[d + 2] = 0; }
+      out[d + 3] = 255;
     }
   }
   return out;
@@ -141,7 +148,7 @@ function ladeNdi() {
 
 const FOURCC_BGRA = 0x41524742, TIMECODE_SYNTHESIZE = 9223372036854775807n;
 
-function ndiSender({ name = 'Matrix Games', faktor = 10 }) {
+function ndiSender({ name = 'Matrix Games', faktor = 10, pixel = faktor }) {
   const n = ladeNdi();
   const handle = n.create({ p_ndi_name: name, p_groups: null, clock_video: false, clock_audio: false });
   if (!handle) throw new Error('NDIlib_send_create fehlgeschlagen');
@@ -152,12 +159,12 @@ function ndiSender({ name = 'Matrix Games', faktor = 10 }) {
     xres: ow, yres: oh, FourCC: FOURCC_BGRA, frame_rate_N: 60, frame_rate_D: 1, picture_aspect_ratio: ow / oh,
     frame_format_type: 1, timecode: TIMECODE_SYNTHESIZE, p_data: mem, line_stride_in_bytes: ow * 4, p_metadata: null, timestamp: 0n,
   };
-  const st = { on: true, err: '', name, verbindungen: 0, aufloesung: `${ow}×${oh}`, bilder: 0, lib: n.datei };
+  const st = { on: true, err: '', name, verbindungen: 0, aufloesung: `${ow}×${oh}`, pixel, bilder: 0, lib: n.datei };
   let offen = true;
   const send = (px) => {
     if (!offen || st.err) return;
     try {
-      ndiBild(px, faktor, puffer);
+      ndiBild(px, faktor, puffer, st.pixel);
       n.koffi.encode(mem, 'uint8_t', puffer, size);
       n.sendVideo(handle, frame);
       st.bilder++;
@@ -170,7 +177,9 @@ function ndiSender({ name = 'Matrix Games', faktor = 10 }) {
     try { n.destroy(handle); } catch {}
     try { n.koffi.free(mem); } catch {}
   };
-  return { send, stop, poll, st };
+  // Pixelgröße ändern, ohne den Stream neu aufzubauen (Empfänger bleiben verbunden)
+  const setPixel = (p) => { st.pixel = Math.max(1, Math.min(faktor, +p || faktor)); };
+  return { send, stop, poll, setPixel, st };
 }
 
 /* ── Verwaltung & IPC ───────────────────────────────────────────────────── */
@@ -193,11 +202,13 @@ function createAusgabe(onStatus = () => {}, onAktiv = () => {}) {
       if (sacn) { sacn.stop(); sacn = null; }
       if (s.on) sacn = sacnSender({ iface: s.iface, u1: +s.u1 || 1, u2: +s.u2 || 5, fpu: +s.fpu || 144 });
     }
-    if (JSON.stringify(alt.ndi) !== JSON.stringify(n) || (n.on && !ndi)) {
+    // NDI nur bei Ein/Aus oder neuem Namen neu aufbauen; die Pixelgröße gilt sofort
+    const ohnePixel = ({ pixel, ...r } = {}) => JSON.stringify(r);
+    if (ohnePixel(alt.ndi) !== ohnePixel(n) || (n.on && !ndi)) {
       if (ndi) { ndi.stop(); ndi = null; }
       ndiFehler = '';
-      if (n.on) { try { ndi = ndiSender({ name: n.name || 'Matrix Games' }); } catch (e) { ndiFehler = e.message; } }
-    }
+      if (n.on) { try { ndi = ndiSender({ name: n.name || 'Matrix Games', pixel: +n.pixel || 10 }); } catch (e) { ndiFehler = e.message; } }
+    } else if (ndi) ndi.setPixel(+n.pixel || 10);
     onAktiv(!!(sacn || ndi));
     return status();
   };
