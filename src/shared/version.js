@@ -7,7 +7,7 @@ export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 
 export const CHANGELOG = {
   "1.0.0-beta.8": [
-    "Neues Spiel Pac-Man: hochkant über beide Matrizen, Labyrinth wie im Original (Tunnel, Geisterhaus, Kraftpillen, Früchte), mit Demo, Highscore und Gamepad",
+    "Neues Spiel Pac-Man: hochkant über beide Matrizen, Pac-Man und Geister 3×3 Pixel groß (Mund und Blickrichtung erkennbar), Labyrinth mit dem Aufbau des Originals (Tunnel, Geisterhaus, Kraftpillen, Früchte), mit Demo, Highscore und Gamepad",
     "Pac-Man: Geister wie im Automaten: Blinky, Pinky, Inky und Clyde mit eigenen Zielen, Scatter/Chase nach der Zeittabelle je Level, blaue Angst-Zeit mit Blinken, Geisterhaus mit Punktezählern, Cruise Elroy, Tempo je Level",
     "Einstellungen: Tempo von Pac-Man (50–150 % des Originals)",
   ],

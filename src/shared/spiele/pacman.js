@@ -1,7 +1,10 @@
 /* ── Pac-Man (hochkant) ────────────────────────────────────────────────────
-   Die beiden 24×24-Matrizen stehen übereinander (24×48). Ein Feld ist ein Pixel: Gänge und
-   Wände sind je 1 Pixel breit, Pac-Man und die Geister auch. Das Labyrinth (24×38) folgt dem
-   Original (gleicher Aufbau, Tunnel, Geisterhaus, 246 Punkte und 4 Kraftpillen statt 240 + 4).
+   Die beiden 24×24-Matrizen stehen übereinander (24×48). Pac-Man und die Geister sind 3×3 Pixel
+   groß, damit man Pac-Mans Mund und die Blickrichtung der Geister sieht; die Gänge sind darum
+   3 Pixel breit und die Wände dazwischen 1–2 Pixel. Das Labyrinth (23×40, die rechte Wand ist
+   doppelt) ist kleiner als im Original, hat aber dessen Aufbau: Tunnel auf halber Höhe,
+   Geisterhaus mit Tür in der Mitte, Frucht darunter, Pac-Man startet darunter, vier Kraftpillen.
+   Gerechnet wird in Pixeln auf den Mittellinien der Gänge: ein Feld des Originals ist hier ein Pixel.
    Oben stehen die Punkte, unten die Leben und die Früchte.
 
    Die Geister verhalten sich wie im Automaten von 1980:
@@ -18,9 +21,10 @@
    - Kraftpille: Geister drehen um, werden blau und langsamer und wählen an jeder Kreuzung eine
      zufällige Richtung; Dauer und Blinken je Level wie im Original. Gefressene Geister kehren als
      Augen ins Haus zurück. 200, 400, 800, 1600 Punkte.
-   - Geisterhaus: Pinky kommt sofort, Inky nach 30, Clyde nach 60 gefressenen Punkten (Level 1),
-     nach einem Leben mit dem gemeinsamen Zähler (7, 17, 32). Frisst Pac-Man 4 s (ab Level 5: 3 s)
-     nichts, kommt der nächste Geist heraus.
+   - Geisterhaus: Pinky kommt sofort, Inky nach 30, Clyde nach 60 von 244 Punkten (Level 1),
+     nach einem Leben mit dem gemeinsamen Zähler (7, 17, 32). Das Labyrinth hat weniger Punkte,
+     darum gelten diese Zahlen (wie auch Früchte und Elroy) anteilig. Frisst Pac-Man 4 s
+     (ab Level 5: 3 s) nichts, kommt der nächste Geist heraus.
    - „Cruise Elroy“: Bei wenigen Punkten wird Blinky in zwei Stufen schneller und jagt auch im Scatter.
    - Tempo je Level als Anteil der Höchstgeschwindigkeit, Geister im Tunnel langsamer, Pac-Man hält
      nach jedem Punkt ein Bild an (nach einer Kraftpille drei).
@@ -30,52 +34,61 @@ import { Bild, dreheInQuer, fdiv } from "./pixel.js";
 import { FONT } from "./mario/index.js";
 
 export const HW = 24, HH = 48;
-// Linke Hälfte des Labyrinths, die rechte ist gespiegelt.
-// # Wand, . Punkt, o Kraftpille, Leerzeichen freier Gang, - Tür des Geisterhauses, H Innenraum
-const HAELFTE = [
-  "############",
-  "#..........#",
-  "#.##.#####.#",
-  "#o##.#####.#",
-  "#.##.#####.#",
-  "#.##.#####.#",
-  "#...........",
-  "#.##.##.####",
-  "#.##.##.####",
-  "#.##.##.####",
-  "#....##....#",
-  "####.##### #",
-  "####.##### #",
-  "####.##### #",
-  "####.##     ",
-  "####.## ###-",
-  "####.## #HHH",
-  "    .   #HHH",
-  "####.## #HHH",
-  "####.## ####",
-  "####.##     ",
-  "####.## ####",
-  "####.## ####",
-  "####.## ####",
-  "#..........#",
-  "#.##.#####.#",
-  "#.##.#####.#",
-  "#.##.#####.#",
-  "#o.#....... ",
-  "##.#.##.####",
-  "##.#.##.####",
-  "##.#.##.####",
-  "#....##....#",
-  "#.########.#",
-  "#.########.#",
-  "#.########.#",
-  "#...........",
-  "############",
+/* Netz der Gänge: Knoten (+) an geraden Stellen, dazwischen Verbindungen (- waagerecht, | senkrecht).
+   Spalte i liegt bei Pixel GX[i/2], Zeile j bei GY[j/2] (Mittellinien, 4–6 Pixel auseinander). */
+const GX = [2, 6, 11, 16, 20], GY = [2, 6, 10, 15, 20, 25, 29, 33, 37];
+const NETZ = [
+  "+-+   +-+",
+  "| |   | |",
+  "+-+-+-+-+",
+  "| |   | |",
+  "+-+   +-+",
+  "| |   | |",
+  "+-+-+-+-+",
+  "|       |",
+  "+       +",   // Tunnel nach außen
+  "|       |",
+  "+-+-+-+-+",
+  "| |   | |",
+  "+-+-+-+-+",
+  "|   |   |",
+  "+-+-+-+-+",
+  "|       |",
+  "+-+-+-+-+",
 ];
-export const KARTE = HAELFTE.map((r) => r + [...r].reverse().join(""));
-export const MB = 24, MH = KARTE.length;
+export const MB = 23, MH = 40;
+// Wichtige Felder
+export const START = { x: 11, y: 29 }, TUER = { x: 11, y: 15 }, HAUS_Y = 20;
+const FRUCHT = { x: 11, y: 25 };
+const TUNNEL_Y = 20;
+// Hier biegen Geister im Scatter und Chase nicht nach oben ab (wie die vier Felder im Original)
+const ROT = new Set(["6,15", "16,15", "6,29", "16,29"]);
+const PILLEN = ["2,6", "20,6", "2,29", "20,29"];
+
+/* Karte je Pixel: # Wand, . Punkt, o Kraftpille, Leerzeichen freier Gang (Mittellinie),
+   - Weg durch die Tür, H Geisterhaus */
+export const KARTE = (() => {
+  const k = Array.from({ length: MH }, () => Array(MB).fill("#"));
+  const gang = (x, y) => { k[y][x] = " "; };
+  NETZ.forEach((zeile, j) => [...zeile].forEach((c, i) => {
+    if (j % 2 === 0 && i % 2 === 0 && c === "+") gang(GX[i / 2], GY[j / 2]);
+    if (j % 2 === 0 && i % 2 === 1 && c === "-") for (let x = GX[(i - 1) / 2]; x <= GX[(i + 1) / 2]; x++) gang(x, GY[j / 2]);
+    if (j % 2 === 1 && i % 2 === 0 && c === "|") for (let y = GY[(j - 1) / 2]; y <= GY[(j + 1) / 2]; y++) gang(GX[i / 2], y);
+  }));
+  for (const x of [0, 1, MB - 2, MB - 1]) gang(x, TUNNEL_Y);
+  for (let y = HAUS_Y - 1; y <= HAUS_Y + 1; y++) for (let x = 7; x <= 15; x++) k[y][x] = "H";
+  k[TUER.y + 1][TUER.x] = "-"; k[TUER.y + 2][TUER.x] = "-";
+  // Punkte auf jedem zweiten Pixel der Mittellinien, nicht rund ums Geisterhaus und nicht im Tunnel
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MB; x++) {
+    if (k[y][x] !== " " || (x + y) % 2 || (y >= 12 && y <= 27 && x >= 4 && x <= 18) || x < 2 || x > MB - 3) continue;
+    if (x === START.x && y === START.y) continue;
+    k[y][x] = ".";
+  }
+  for (const p of PILLEN) { const [x, y] = p.split(",").map(Number); k[y][x] = "o"; }
+  return k.map((r) => r.join(""));
+})();
 // Lage des Labyrinths auf der Leinwand
-const OY = 6;
+const OY = 5;
 
 // Richtungen in der Reihenfolge, in der das Original bei Gleichstand wählt
 export const OBEN = 0, LINKS = 1, UNTEN = 2, RECHTS = 3;
@@ -85,27 +98,23 @@ const TASTEN = {
   ArrowUp: OBEN, KeyW: OBEN, ArrowLeft: LINKS, KeyA: LINKS, ArrowDown: UNTEN, KeyS: UNTEN, ArrowRight: RECHTS, KeyD: RECHTS,
 };
 
-// Wichtige Felder
-export const START = { x: 11, y: 28 }, TUER = { x: 11, y: 14 }, HAUS_Y = 17;
-const FRUCHT = [{ x: 11, y: 20 }, { x: 12, y: 20 }];
-const TUNNEL_Y = 17;
-// Hier biegen Geister im Scatter und Chase nicht nach oben ab (wie die vier Felder im Original)
-const ROT = new Set(["10,14", "13,14", "10,28", "13,28"]);
-
 const zelle = (x, y) => (y < 0 || y >= MH ? "#" : KARTE[y][((x % MB) + MB) % MB]);
 export const pacFrei = (x, y) => !"#H-".includes(zelle(x, y));
 const geistFrei = (x, y) => !"#H-".includes(zelle(x, y));
 const wrap = (x) => ((x % MB) + MB) % MB;
+// Punkte im Labyrinth; Zählerstände des Originals (244 Punkte) gelten anteilig
+export const ALLE_PUNKTE = KARTE.join("").split("").filter((c) => c === "." || c === "o").length;
+export const anteil = (n) => Math.round((n * ALLE_PUNKTE) / 244);
 
 export const GEISTER = ["blinky", "pinky", "inky", "clyde"];
 export const FARBEN = {
   blinky: [255, 0, 0], pinky: [255, 120, 200], inky: [0, 230, 255], clyde: [255, 140, 0],
-  pac: [255, 220, 0], wand: [25, 25, 140], punkt: [110, 80, 60], pille: [255, 184, 150],
-  tuer: [150, 70, 110], angst: [60, 60, 255], blink: [230, 230, 230], augen: [160, 160, 255],
+  pac: [255, 220, 0], wand: [25, 25, 160], punkt: [140, 100, 80], pille: [255, 184, 150],
+  tuer: [150, 70, 110], angst: [40, 40, 255], blink: [230, 230, 230], augen: [255, 255, 255], pupille: [30, 30, 220],
 };
 // Ecken im Scatter (außerhalb des Labyrinths, wie im Original)
-export const ECKEN = { blinky: { x: 21, y: -3 }, pinky: { x: 2, y: -3 }, inky: { x: 23, y: MH }, clyde: { x: 0, y: MH } };
-const HEIM = { blinky: 11, pinky: 11, inky: 9, clyde: 13 };
+export const ECKEN = { blinky: { x: 20, y: -3 }, pinky: { x: 2, y: -3 }, inky: { x: MB - 1, y: MH }, clyde: { x: 0, y: MH } };
+const HEIM = { blinky: 11, pinky: 11, inky: 7, clyde: 15 };
 
 /* ── Tabellen je Level (wie im Original) ── */
 // Tempo als Anteil der Höchstgeschwindigkeit
@@ -154,7 +163,7 @@ const FRUECHTE = [
   { a: [80, 220, 255], b: [255, 255, 255], p: 5000 },  // Schlüssel
 ];
 export const fruchtFuer = (level) => FRUECHTE[[0, 0, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6][level] ?? 7];
-const FRUCHT_BEI = [70, 170], FRUCHT_ZEIT = 570;
+const FRUCHT_BEI = [anteil(70), anteil(170)], FRUCHT_ZEIT = 570;
 const LEBEN = 3, EXTRA = 10000;
 const BEREIT = 120, ERSTES_BEREIT = 150, GEFRESSEN = 60, TOD = 150, GESCHAFFT = 60 + 8 * 12;
 
@@ -195,7 +204,7 @@ export class PacRunde {
   // Elroy-Stufe von Blinky (0, 1 oder 2)
   get elroy() {
     if (!this.elroyAn) return 0;
-    const n = elroyGrenze(this.level);
+    const n = anteil(elroyGrenze(this.level));
     return this.rest <= n / 2 ? 2 : this.rest <= n ? 1 : 0;
   }
 
@@ -249,7 +258,7 @@ export class PacRunde {
     const t = this.tempo;
     if (g.zustand === "augen" || g.zustand === "rein") return 2;
     if (g.zustand !== "frei") return 0.5;
-    if (g.y === TUNNEL_Y && (g.x <= 3 || g.x >= MB - 4)) return t.tunnel;
+    if (g.y === TUNNEL_Y && (g.x <= 1 || g.x >= MB - 2)) return t.tunnel;
     if (g.angst) return t.angst;
     if (g.name === "blinky" && this.elroy) return this.elroy === 2 ? t.elroy2 : t.elroy1;
     return t.geist;
@@ -315,10 +324,10 @@ export class PacRunde {
       if (FRUCHT_BEI.includes(this.gefressen)) { this.frucht = FRUCHT_ZEIT; this.fruchtNr++; }
       if (!this.rest) { this.phase = "geschafft"; this.zeit = GESCHAFFT; this.ton("_stop"); }
     }
-    if (this.frucht && p.y === FRUCHT[0].y && (p.x === FRUCHT[0].x || p.x === FRUCHT[1].x)) {
+    if (this.frucht && Math.abs(p.x - FRUCHT.x) + Math.abs(p.y - FRUCHT.y) <= 1) {
       const f = fruchtFuer(this.level);
       this.frucht = 0; this.punkteDazu(f.p); this.ton("fruit");
-      this.anzeige = { text: String(f.p), x: 12, y: FRUCHT[0].y, zeit: 120 };
+      this.anzeige = { text: String(f.p), x: FRUCHT.x, y: FRUCHT.y, zeit: 120 };
     }
   }
   punkteDazu(n) {
@@ -343,18 +352,18 @@ export class PacRunde {
     const g = this.bevorzugt();
     if (!g) return;
     if (this.globalAn) {
-      if (this.globalZ >= GLOBAL[g.name]) {
+      if (this.globalZ >= anteil(GLOBAL[g.name])) {
         this.freilassen(g);
         if (g.name === "clyde") { this.globalAn = false; this.globalZ = 0; }
       }
-    } else if (this.zaehler[g.name] >= hausGrenze(g.name, this.level)) this.freilassen(g);
+    } else if (this.zaehler[g.name] >= anteil(hausGrenze(g.name, this.level))) this.freilassen(g);
     if (g.zustand === "haus" && this.seitPunkt >= (this.level < 5 ? 240 : 180)) { this.freilassen(g); this.seitPunkt = 0; }
   }
-  // Treffen sich Pac-Man und ein Geist auf einem Feld? (wie im Original nur gleiches Feld)
+  // Treffen sich Pac-Man und ein Geist? Wie im Original zählt nur, ob die Mitten (fast) auf einem Feld liegen
   treffen() {
     const p = this.pac;
     for (const g of this.geister) {
-      if (g.x !== p.x || g.y !== p.y || g.zustand === "augen" || g.zustand === "rein") continue;
+      if (Math.abs(g.x - p.x) + Math.abs(g.y - p.y) > 1 || g.zustand === "augen" || g.zustand === "rein") continue;
       if (g.angst) {
         this.kombi++;
         const n = 100 * 2 ** this.kombi;
@@ -435,33 +444,48 @@ export class PacRunde {
     const geschafft = this.phase === "geschafft" && this.zeit < GESCHAFFT - 60;
     const wand = geschafft && fdiv(this.zeit, 12) % 2 === 0 ? [220, 220, 220] : FARBEN.wand;
     for (const [x, y] of WAND) b.set(x, OY + y, wand);
-    if (!geschafft) b.rect(TUER.x, OY + TUER.y + 1, 2, 1, FARBEN.tuer);
+    if (!geschafft) b.rect(TUER.x - 1, OY + TUER.y + 2, 3, 1, FARBEN.tuer);
+    const pille = this.phase !== "laeuft" || fdiv(this.tick, 10) % 2 === 0;
     for (let y = 0; y < MH; y++) for (let x = 0; x < MB; x++) {
       const c = this.punkte[y][x];
       if (c === ".") b.set(x, OY + y, FARBEN.punkt);
-      else if (c === "o" && (this.phase !== "laeuft" || fdiv(this.tick, 10) % 2 === 0)) b.set(x, OY + y, FARBEN.pille);
+      else if (c === "o" && pille) for (const [dx, dy] of PLUS) b.set(x + dx, OY + y + dy, FARBEN.pille);
     }
-    if (this.frucht) { const f = fruchtFuer(this.level); b.set(FRUCHT[0].x, OY + FRUCHT[0].y, f.a); b.set(FRUCHT[1].x, OY + FRUCHT[1].y, f.b); }
+    if (this.frucht) {
+      const f = fruchtFuer(this.level);
+      for (const [dx, dy, i] of FRUCHT_FORM) b.set(FRUCHT.x + dx, OY + FRUCHT.y + dy, i ? f.b : f.a);
+    }
     const tod = this.phase === "tod" ? TOD - this.zeit : -1;
-    // Geister (beim Sterben verschwinden sie nach einer Sekunde, im Levelende sofort)
-    if (tod < 60 && this.phase !== "geschafft" && this.phase !== "over") {
-      for (const g of this.geister) {
-        if (this.anzeige?.geist === g && this.phase === "gefressen") continue;
-        const c = g.zustand === "augen" || g.zustand === "rein" ? FARBEN.augen
-          : g.angst ? (this.angstBlinkt ? FARBEN.blink : FARBEN.angst) : FARBEN[g.name];
-        b.set(g.x, OY + g.y, c);
-      }
-    }
-    // Pac-Man: beim Sterben wird er dunkler und zerplatzt
+    // Pac-Man (3×3, Mund in Laufrichtung); beim Sterben klappt er auf, bis nichts übrig ist, und zerplatzt
     const p = this.pac;
     if (this.phase === "gefressen") { /* an seiner Stelle stehen die Punkte */ }
-    else if (tod < 0) b.set(p.x, OY + p.y, FARBEN.pac);
-    else if (tod < 120) {
-      const f = tod < 60 ? 1 : 1 - (tod - 60) / 60;
-      b.set(p.x, OY + p.y, FARBEN.pac.map((v) => Math.round(v * f)));
-    } else if (tod < 140) {
+    else if (tod < 60) {
+      // Der Mund geht nie ganz zu, damit man die Richtung immer sieht
+      const mund = tod >= 0 || p.steht || this.phase !== "laeuft" ? 2 : 1 + (fdiv(this.tick, 4) % 2);
+      figur(b, p.x, OY + p.y, p.dir, PAC_FORM[mund], FARBEN.pac);
+    } else if (tod < 120) figur(b, p.x, OY + p.y, OBEN, PAC_TOD[Math.min(3, fdiv(tod - 60, 15))], FARBEN.pac);
+    else if (tod < 140) {
       const r = tod < 130 ? 1 : 2;
       for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r]]) b.set(p.x + dx, OY + p.y + dy, [200, 180, 0]);
+    }
+    // Geister (beim Sterben verschwinden sie nach einer Sekunde, im Levelende sofort)
+    if (tod < 60 && this.phase !== "geschafft" && this.phase !== "over") {
+      const rock = fdiv(this.tick, 8) % 2;
+      for (const g of this.geister) {
+        if (this.anzeige?.geist === g && this.phase === "gefressen") continue;
+        const x = g.x, y = OY + g.y;
+        if (g.zustand === "augen" || g.zustand === "rein") {
+          b.set(x - 1, y, FARBEN.augen); b.set(x + 1, y, FARBEN.augen);
+          b.set(x + DX[g.dir], y + DY[g.dir], FARBEN.pupille);
+          continue;
+        }
+        const blinkt = g.angst && this.angstBlinkt;
+        const koerper = g.angst ? (blinkt ? FARBEN.blink : FARBEN.angst) : FARBEN[g.name];
+        for (const [dx, dy] of GEIST_FORM[rock]) b.set(x + dx, y + dy, koerper);
+        // Normal: ein weißes Auge in Blickrichtung; mit Angst ein blasses Gesicht in der Mitte
+        if (g.angst) b.set(x, y, blinkt ? [255, 0, 0] : FARBEN.pille);
+        else b.set(x + DX[g.dir], y + DY[g.dir], FARBEN.augen);
+      }
     }
     if (this.anzeige) {
       const t = this.anzeige.text, w = FONT.textWidth(t);
@@ -471,34 +495,54 @@ export class PacRunde {
     }
     if (!hud) return;
     if (this.phase === "bereit") {
-      b.rect(1, OY + 19, 22, 7, SCHWARZ);
-      FONT.drawText(b, "READY", mitte("READY"), OY + 20, FARBEN.pac);
+      b.rect(1, OY + 22, 22, 7, SCHWARZ);
+      FONT.drawText(b, "READY", mitte("READY"), OY + 23, FARBEN.pac);
     }
     FONT.drawText(b, kurz(this.score), 1, 0, [255, 255, 255]);
-    // Level oben rechts klein, Leben unten links, Früchte unten rechts
-    for (let i = 0; i < Math.min(5, this.leben - (this.phase === "laeuft" || this.phase === "gefressen" ? 1 : 0)); i++) lebenIcon(b, 1 + i * 4, HH - 3);
-    for (let i = 0; i < Math.min(4, this.level); i++) {
-      const f = fruchtFuer(this.level - i), x = HW - 3 - i * 3;
-      b.set(x, HH - 2, f.a); b.set(x + 1, HH - 2, f.b); b.set(x, HH - 1, f.a); b.set(x + 1, HH - 1, f.a);
+    // Leben unten links, Früchte der letzten Level unten rechts
+    for (let i = 0; i < Math.min(4, this.leben - (this.phase === "laeuft" || this.phase === "gefressen" ? 1 : 0)); i++) figur(b, 2 + i * 4, HH - 2, RECHTS, PAC_FORM[2], FARBEN.pac);
+    for (let i = 0; i < Math.min(3, this.level); i++) {
+      const f = fruchtFuer(this.level - i);
+      for (const [dx, dy, j] of FRUCHT_FORM) b.set(HW - 2 - i * 4 + dx, HH - 2 + dy, j ? f.b : f.a);
     }
   }
 }
 
 const SCHWARZ = [0, 0, 0];
-// Wandpixel: nur Wände neben einem Gang, damit dicke Blöcke als Umriss erscheinen wie im Original
+// Figuren 3×3 als Versatz zur Mitte. Pac-Man nach rechts: zu, halb offen, offen; gedreht in Laufrichtung
+const QUADRAT = [[-1, -1], [0, -1], [1, -1], [-1, 0], [0, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
+const ohne = (...weg) => QUADRAT.filter(([x, y]) => !weg.some(([a, b]) => a === x && b === y));
+const PAC_FORM = [QUADRAT, ohne([1, 0]), ohne([1, 0], [0, 0])];
+// Sterben (Mund nach oben): klappt immer weiter auf
+const PAC_TOD = [ohne([0, -1], [0, 0]), ohne([0, -1], [0, 0], [-1, -1], [1, -1]), [[-1, 1], [0, 1], [1, 1]], [[0, 1]]];
+// Geist: runder Kopf, Körper, wackelnder Saum
+const GEIST_FORM = [
+  [[0, -1], [-1, 0], [0, 0], [1, 0], [-1, 1], [1, 1]],
+  [[0, -1], [-1, 0], [0, 0], [1, 0], [-1, 1], [0, 1], [1, 1]],
+];
+const PLUS = [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]];
+// Frucht: Blatt (b) oben, Frucht (a) darunter
+const FRUCHT_FORM = [[0, -1, 1], [-1, 0, 0], [0, 0, 0], [1, 0, 0], [0, 1, 0]];
+// Form für Blickrichtung d drehen (gezeichnet ist sie nach rechts)
+const drehen = ([x, y], d) => (d === RECHTS ? [x, y] : d === LINKS ? [-x, y] : d === OBEN ? [y, -x] : [y, x]);
+function figur(b, x, y, d, form, farbe) {
+  for (const p of form) { const [dx, dy] = drehen(p, d); b.set(x + dx, y + dy, farbe); }
+}
+
+/* Wände: alles, was nicht innerhalb eines Pixels um eine Mittellinie (oder im Haus) liegt, ist Wand.
+   Gezeichnet werden nur Wandpixel neben einem Gang, damit dicke Blöcke als Umriss erscheinen.
+   Die Tür (Zeile über dem Haus) ist zu und wird rosa gezeichnet. Spalte 24 verdoppelt die rechte Wand. */
+const OFFEN = Array.from({ length: MH }, (_, y) => Array.from({ length: MB }, (_, x) => {
+  if (y === TUER.y + 2 && Math.abs(x - TUER.x) <= 1) return false;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (zelle(x + dx, y + dy) !== "#") return true;
+  return false;
+}));
 const WAND = [];
 for (let y = 0; y < MH; y++) for (let x = 0; x < MB; x++) {
-  if (KARTE[y][x] !== "#") continue;
+  if (OFFEN[y][x]) continue;
   let rand = false;
-  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-    const xx = x + dx, yy = y + dy;
-    if (xx >= 0 && xx < MB && yy >= 0 && yy < MH && KARTE[yy][xx] !== "#") rand = true;
-  }
-  if (rand) WAND.push([x, y]);
-}
-function lebenIcon(b, x, y) {
-  // Kleiner Pac-Man mit offenem Mund nach rechts
-  for (const [dx, dy] of [[1, 0], [0, 1], [1, 2], [0, 0], [0, 2], [2, 0], [2, 2]]) b.set(x + dx, y + dy, FARBEN.pac);
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (OFFEN[y + dy]?.[wrap(x + dx)]) rand = true;
+  if (rand) { WAND.push([x, y]); if (x === MB - 1) WAND.push([MB, y]); }
 }
 
 export const kurz = (n) => (n < 10000 ? String(n) : n < 1e6 ? `${Math.floor(n / 1000)}K` : `${Math.floor(n / 1e6)}M`);
@@ -541,14 +585,14 @@ export function demoRichtung(r, koennen = 1, rnd = Math.random) {
   let best = null, bw = -Infinity;
   for (const [d, n] of wege) {
     let wert;
-    if (gefahr[n] <= 1) wert = -1000 + gefahr[n];
+    if (gefahr[n] <= 3) wert = -1000 + gefahr[n];
     else {
       const dist = bfs([n], pi);
       let ziel = 9999;
       for (let i = 0; i < dist.length; i++) {
         if (dist[i] >= ziel) continue;
         const c = r.punkte[fdiv(i, MB)][i % MB];
-        const gut = (jagen && blaue.has(i)) || ((c === "." || (c === "o" && pillenOk)) && dist[i] + 2 < gefahr[i]);
+        const gut = (jagen && blaue.has(i)) || ((c === "." || (c === "o" && pillenOk)) && dist[i] + 3 < gefahr[i]);
         if (gut) ziel = dist[i] - (jagen && blaue.has(i) ? 5 : 0);
       }
       wert = (ziel === 9999 ? -50 : -ziel) + 2 * Math.min(gefahr[n], 6);
@@ -616,7 +660,8 @@ export function createPacman({ ton = () => {}, rekord, drehung = () => "rechts",
           h.fill(SCHWARZ);
           zentriert(h, "PAC", 8, FARBEN.pac);
           zentriert(h, "MAN", 14, FARBEN.pac);
-          GEISTER.forEach((n, i) => h.set(6 + i * 4, 24, FARBEN[n]));
+          figur(h, 3, 25, RECHTS, PAC_FORM[2], FARBEN.pac);
+          GEISTER.forEach((n, i) => { for (const [dx, dy] of GEIST_FORM[0]) h.set(8 + i * 4 + dx, 25 + dy, FARBEN[n]); h.set(7 + i * 4, 25, FARBEN.augen); });
           if (fdiv(blink, 30) % 2 === 0) zentriert(h, "START", 36, [255, 255, 255]);
         } else if (state === "playing") {
           game.render(h, true);
@@ -627,8 +672,8 @@ export function createPacman({ ton = () => {}, rekord, drehung = () => "rechts",
           }
         } else if (ende <= 60) {
           game.render(h, true);
-          h.rect(1, OY + 19, 22, 7, SCHWARZ);
-          zentriert(h, "OVER", OY + 20, [255, 0, 0]);
+          h.rect(1, OY + 22, 22, 7, SCHWARZ);
+          zentriert(h, "OVER", OY + 23, [255, 0, 0]);
         } else {
           h.fill(SCHWARZ);
           const an = fdiv(blink, 40) % 3 < 2;

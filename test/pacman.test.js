@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   PacRunde, KARTE, MB, MH, pacFrei, START, TUER, ECKEN, OBEN, LINKS, UNTEN, RECHTS,
-  modusZeiten, angstDauer, hausGrenze, createPacman, createPacmanDemo, HW, HH,
+  modusZeiten, angstDauer, hausGrenze, anteil, ALLE_PUNKTE, createPacman, createPacmanDemo, HW, HH,
 } from "../src/shared/spiele/pacman.js";
 import { SPIELE, Bild } from "../src/shared/spiele/index.js";
 
@@ -12,11 +12,12 @@ const runde = () => new PacRunde(() => {}, zufall());
 const laufen = (r) => { r.phase = "laeuft"; r.zeit = 0; };
 const alleFrei = (r) => r.geister.forEach((g) => r.losLaufen(g));
 
-test("Pac-Man: Labyrinth ist spiegelgleich, ohne Sackgassen, mit 246 Punkten und 4 Kraftpillen", () => {
+test("Pac-Man: Labyrinth ist spiegelgleich, ohne Sackgassen, mit Punkten und 4 Kraftpillen", () => {
   assert.equal(KARTE.length, MH);
   for (const row of KARTE) { assert.equal(row.length, MB); assert.equal(row, [...row].reverse().join("")); }
   const alle = KARTE.join("");
-  assert.equal([...alle].filter((c) => c === ".").length, 246);
+  assert.ok([...alle].filter((c) => c === ".").length > 80);
+  assert.equal(ALLE_PUNKTE, [...alle].filter((c) => c === "." || c === "o").length);
   assert.equal([...alle].filter((c) => c === "o").length, 4);
   for (let y = 0; y < MH; y++) for (let x = 0; x < MB; x++) {
     if (!pacFrei(x, y)) continue;
@@ -24,7 +25,7 @@ test("Pac-Man: Labyrinth ist spiegelgleich, ohne Sackgassen, mit 246 Punkten und
     assert.ok(n >= 2, `Sackgasse bei ${x},${y}`);
   }
   // Tunnel: links hinaus, rechts wieder herein
-  assert.ok(pacFrei(-1, 17) && pacFrei(MB, 17));
+  assert.ok(pacFrei(-1, 20) && pacFrei(MB, 20));
   assert.ok(pacFrei(START.x, START.y) && pacFrei(TUER.x, TUER.y));
 });
 
@@ -56,29 +57,30 @@ test("Pac-Man: Geister wählen den kürzesten Luftlinien-Weg, bei Gleichstand ob
   const r = runde();
   const g = r.geister[0];
   g.zustand = "frei"; r.modusIdx = 1;
-  // Kreuzung (4,6): von unten kommend, Ziel genau oben → oben
-  Object.assign(r.pac, { x: 4, y: 1 });
-  assert.equal(r.waehle(g, 4, 6, OBEN), OBEN);
+  // Kreuzung (6,6): von unten kommend, Ziel genau oben → oben
+  Object.assign(r.pac, { x: 6, y: 1 });
+  assert.equal(r.waehle(g, 6, 6, OBEN), OBEN);
   // Ziel rechts unten: rechts ist näher
-  Object.assign(r.pac, { x: 9, y: 9 });
-  assert.equal(r.waehle(g, 4, 6, RECHTS), RECHTS);
-  // Gleich weit nach links und rechts (Ziel genau darunter, unten zu) → links
-  Object.assign(r.pac, { x: 11, y: 30 });
-  assert.equal(r.waehle(g, 11, 6, OBEN), LINKS);
+  Object.assign(r.pac, { x: 16, y: 12 });
+  assert.equal(r.waehle(g, 6, 6, RECHTS), RECHTS);
+  // Gleich weit nach links und rechts (Ziel genau darunter, unten ist hinter ihm) → links
+  Object.assign(r.pac, { x: 11, y: 38 });
+  assert.equal(r.waehle(g, 11, 29, OBEN), LINKS);
   // Umkehren ist nie dabei, auch wenn das Ziel hinter dem Geist liegt
   Object.assign(r.pac, { x: 1, y: 6 });
-  assert.notEqual(r.waehle(g, 6, 6, RECHTS), LINKS);
+  assert.equal(r.waehle(g, 4, 6, RECHTS), RECHTS);
 });
 
 test("Pac-Man: über dem Geisterhaus biegt kein Geist nach oben ab, außer mit Angst", () => {
   const r = runde();
   const g = r.geister[0];
   g.zustand = "frei"; r.modusIdx = 1;
-  Object.assign(r.pac, { x: 10, y: 1, dir: LINKS });
-  // (10,14): oben wäre der kürzeste Weg, ist aber gesperrt
-  assert.equal(r.waehle(g, 10, 14, LINKS), LINKS);
-  assert.equal(r.waehle(g, 9, 14, LINKS), LINKS);
-  assert.equal(r.waehle(g, 4, 14, LINKS), OBEN);   // anderswo darf er
+  Object.assign(r.pac, { x: 6, y: 1, dir: LINKS });
+  // (6,15): oben wäre der kürzeste Weg, ist aber gesperrt
+  assert.equal(r.waehle(g, 6, 15, LINKS), LINKS);
+  assert.equal(r.waehle(g, 6, 6, LINKS), OBEN);   // anderswo darf er
+  g.angst = true;
+  assert.ok([OBEN, LINKS].includes(r.waehle(g, 6, 15, LINKS)));
 });
 
 test("Pac-Man: Scatter und Chase wechseln nach der Tabelle, jeder Wechsel lässt die Geister umdrehen", () => {
@@ -87,7 +89,7 @@ test("Pac-Man: Scatter und Chase wechseln nach der Tabelle, jeder Wechsel lässt
   assert.equal(modusZeiten(5)[0], 300);
   const r = runde();
   laufen(r); alleFrei(r);
-  Object.assign(r.pac, { x: 1, y: 36 });
+  Object.assign(r.pac, { x: 2, y: 37 });
   for (let i = 0; i < 419; i++) r.update();
   assert.equal(r.modusIdx, 0);
   r.update();
@@ -128,9 +130,9 @@ test("Pac-Man: Augen laufen zurück ins Haus und der Geist kommt wieder heraus",
   const r = runde();
   laufen(r);
   const g = r.geister[0];
-  Object.assign(g, { x: 1, y: 36, zustand: "augen", off: 0, dir: OBEN, am: OBEN });
-  g.plan = r.waehle(g, 1, 35, OBEN);
-  Object.assign(r.pac, { x: 22, y: 1 });
+  Object.assign(g, { x: 2, y: 37, zustand: "augen", off: 0, dir: OBEN, am: OBEN });
+  g.plan = r.waehle(g, 2, 36, OBEN);
+  Object.assign(r.pac, { x: 20, y: 2 });
   const seen = new Set();
   for (let i = 0; i < 60 * 20 && !(seen.has("raus") && g.zustand === "frei"); i++) {
     r.bewege(g, r.geschwindigkeit(g), () => { r.geistSchritt(g); });
@@ -141,7 +143,7 @@ test("Pac-Man: Augen laufen zurück ins Haus und der Geist kommt wieder heraus",
   assert.deepEqual([g.x, g.y], [TUER.x, TUER.y]);
 });
 
-test("Pac-Man: Geisterhaus nach Punkten (Level 1: Inky 30, Clyde 60) und nach einem Leben gemeinsam", () => {
+test("Pac-Man: Geisterhaus nach Punkten (Level 1: Inky 30, Clyde 60 von 244, anteilig) und nach einem Leben gemeinsam", () => {
   assert.equal(hausGrenze("pinky", 1), 0);
   assert.equal(hausGrenze("inky", 1), 30);
   assert.equal(hausGrenze("clyde", 1), 60);
@@ -153,17 +155,17 @@ test("Pac-Man: Geisterhaus nach Punkten (Level 1: Inky 30, Clyde 60) und nach ei
   r.hausPruefen();
   assert.equal(z("pinky"), "raus");
   r.geist("pinky").zustand = "frei";
-  for (let i = 0; i < 29; i++) { r.zaehler[r.bevorzugt().name]++; r.hausPruefen(); }
+  for (let i = 0; i < anteil(30) - 1; i++) { r.zaehler[r.bevorzugt().name]++; r.hausPruefen(); }
   assert.equal(z("inky"), "haus");
   r.zaehler.inky++; r.hausPruefen();
   assert.equal(z("inky"), "raus");
   // Clyde zählt erst jetzt
   assert.equal(r.zaehler.clyde, 0);
   // Gemeinsamer Zähler nach einem verlorenen Leben
-  r.aufstellen(); r.globalAn = true; r.globalZ = 6;
+  r.aufstellen(); r.globalAn = true; r.globalZ = anteil(7) - 1;
   r.hausPruefen();
   assert.equal(z("pinky"), "haus");
-  r.globalZ = 7; r.hausPruefen();
+  r.globalZ = anteil(7); r.hausPruefen();
   assert.equal(z("pinky"), "raus");
   // Ohne Punkte kommt nach 4 Sekunden der nächste
   r.seitPunkt = 240; r.hausPruefen();
@@ -174,7 +176,7 @@ test("Pac-Man: Pac-Man frisst Punkte, hält dabei an und biegt am Abzweig ab", (
   const r = runde();
   laufen(r);
   r.geister.forEach((g) => { g.zustand = "haus"; });
-  for (let i = 0; i < 60; i++) { r.seitPunkt = 0; r.update(); }
+  for (let i = 0; i < 90; i++) { r.seitPunkt = 0; r.update(); }
   assert.ok(r.score >= 30, `Punkte ${r.score}`);
   assert.equal(r.pac.y, START.y);
   assert.ok(r.pac.x < START.x);
@@ -191,7 +193,7 @@ test("Pac-Man: Demo spielt und frisst Punkte, mit vollem Können länger als ohn
     return best;
   };
   const gut = punkte(1), schlecht = punkte(0);
-  assert.ok(gut > 1000, `Demo ${gut}`);
+  assert.ok(gut > 500, `Demo ${gut}`);
   assert.ok(gut >= schlecht, `gut ${gut}, schlecht ${schlecht}`);
 });
 
