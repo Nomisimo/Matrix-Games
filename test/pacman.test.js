@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   PacRunde, KARTE, MB, MH, pacFrei, START, TUER, ECKEN, OBEN, LINKS, UNTEN, RECHTS,
-  modusZeiten, angstDauer, hausGrenze, anteil, ALLE_PUNKTE, createPacman, createPacmanDemo, HW, HH,
+  modusZeiten, angstDauer, hausGrenze, anteil, ALLE_PUNKTE, LABYRINTHE, createPacman, createPacmanDemo, HW, HH,
 } from "../src/shared/spiele/pacman.js";
 import { SPIELE, Bild } from "../src/shared/spiele/index.js";
 
@@ -215,4 +215,48 @@ test("Pac-Man steht in der Spieleliste als Hochkant-Spiel, Spiel und Game Over",
   const hoch = new Bild(HW, HH), quer = new Bild();
   p.render(hoch); p.render(quer);
   for (let y = 0; y < HH; y++) for (let x = 0; x < HW; x++) assert.deepEqual(quer.get(y, HW - 1 - x), hoch.get(x, y));
+});
+
+test("Pac-Man: beide Darstellungen haben ein gültiges Labyrinth, Original mit 246 Punkten", () => {
+  for (const L of Object.values(LABYRINTHE)) {
+    for (const row of L.karte) assert.equal(row, [...row].reverse().join(""), L.name);
+    for (let y = 0; y < L.MH; y++) for (let x = 0; x < L.MB; x++) {
+      if (!L.frei(x, y)) continue;
+      const n = [[0, -1], [-1, 0], [0, 1], [1, 0]].filter(([dx, dy]) => L.frei(x + dx, y + dy)).length;
+      assert.ok(n >= 2, `${L.name}: Sackgasse bei ${x},${y}`);
+    }
+    assert.ok(L.frei(L.start.x, L.start.y) && L.frei(L.tuer.x, L.tuer.y) && L.frei(-1, L.tunnelY));
+    for (const k of L.rot) { const [x, y] = k.split(",").map(Number); assert.ok(L.frei(x, y) && L.frei(x, y - 1), `${L.name}: rotes Feld ${k}`); }
+  }
+  assert.equal(LABYRINTHE.original.karte.join("").split("").filter((c) => c === ".").length, 246);
+  assert.equal(LABYRINTHE.original.anteil(30), 31);
+});
+
+test("Pac-Man: Original-Labyrinth spielt sich, Augen finden heim, Umschalten gilt ab der nächsten Runde", () => {
+  const d = createPacmanDemo({ labyrinth: () => "original", rnd: zufall(5) });
+  let best = 0;
+  for (let i = 0; i < 60 * 90; i++) { d.step(); best = Math.max(best, d.runde.score); }
+  assert.equal(d.runde.lab.name, "original");
+  assert.ok(best > 500, `Demo ${best}`);
+  const r = new PacRunde(() => {}, zufall(), { labyrinth: "original" });
+  laufen(r);
+  const g = r.geister[0];
+  Object.assign(g, { x: 1, y: 36, zustand: "augen", off: 0, dir: OBEN, am: OBEN });
+  g.plan = r.waehle(g, 1, 35, OBEN);
+  for (let i = 0; i < 60 * 20 && g.zustand !== "frei"; i++) r.bewege(g, r.geschwindigkeit(g), () => { r.geistSchritt(g); });
+  assert.deepEqual([g.zustand, g.x, g.y], ["frei", r.lab.tuer.x, r.lab.tuer.y]);
+  let lab = "gross";
+  const p = createPacman({ labyrinth: () => lab });
+  p.key("Enter");
+  assert.equal(p.spiel.lab.name, "gross");
+  lab = "original";
+  assert.equal(p.spiel.lab.name, "gross");
+  p.spiel.phase = "over"; p.step();
+  for (let i = 0; i < 70; i++) p.step();
+  p.key("Enter");
+  assert.equal(p.spiel.lab.name, "original");
+  // Die Demo wechselt sofort
+  const demo = createPacmanDemo({ labyrinth: () => lab });
+  lab = "gross"; demo.step();
+  assert.equal(demo.runde.lab.name, "gross");
 });
