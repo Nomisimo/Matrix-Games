@@ -104,11 +104,40 @@ function tetrisSounds() {
   };
 }
 
+/* ── Pac-Man: Startmelodie, Waka-Waka, Kraftpille, Geist, Frucht, Tod ── */
+const PAC_NOTEN = { B4: 493.88, C5: 523.25, Ds5: 622.25, E5: 659.26, F5: 698.46, Fs5: 739.99, G5: 783.99, Gs5: 830.61, A5: 880, B5: 987.77, C6: 1046.5, R: 0 };
+const PAC_START = "B4 1,B5 1,Fs5 1,Ds5 1,B5 .5,Fs5 1.5,Ds5 2,C5 1,C6 1,G5 1,E5 1,C6 .5,G5 1.5,E5 2,B4 1,B5 1,Fs5 1,Ds5 1,B5 .5,Fs5 1.5,Ds5 2,Ds5 .5,E5 .5,F5 1,F5 .5,Fs5 .5,G5 1,G5 .5,Gs5 .5,A5 1,B5 2"
+  .split(",").map((x) => { const [n, b] = x.split(" "); return [n, +b]; });
+function pacmanSounds() {
+  const takt = 0.09;
+  const melodie = cat(PAC_START.map(([n, b]) => {
+    const len = N(b * takt), f = PAC_NOTEN[n];
+    return f ? mul(sq(len, f, 0.5), env(len, 0.02, 0.1, 0.7, 0.2)) : new Float32Array(len);
+  }));
+  const waka = (a, b) => vol(mul(glide(N(0.07), a, b), env(N(0.07), 0.05, 0.1, 0.8, 0.3)), 0.18);
+  return {
+    start: vol(melodie, 0.18),
+    dot: waka(260, 480),
+    dot2: waka(480, 260),
+    power: vol(cat([0, 1, 2].map(() => mul(glide(N(0.08), 300, 900), env(N(0.08), 0.02, 0.05, 0.7, 0.2)))), 0.16),
+    ghost: vol(mul(glide(N(0.25), 200, 1400), env(N(0.25), 0.01, 0.05, 0.7, 0.3)), 0.2),
+    fruit: vol(mul(glide(N(0.18), 1200, 400), env(N(0.18), 0.01, 0.05, 0.7, 0.3)), 0.2),
+    extra: vol(cat([1047, 1319, 1047, 1319, 1568].map((f) => mul(sq(N(0.06), f, 0.25), env(N(0.06), 0.02, 0.04, 0.75, 0.2)))), 0.2),
+    death: vol(cat([
+      mul(glide(N(0.9), 900, 200), env(N(0.9), 0.01, 0.05, 0.7, 0.2)),
+      mul(glide(N(0.12), 400, 100), env(N(0.12), 0.01, 0.05, 0.6, 0.4)),
+      mul(glide(N(0.12), 400, 100), env(N(0.12), 0.01, 0.05, 0.6, 0.4)),
+    ]), 0.22),
+    over: vol(mul(glide(N(0.6), 300, 80), env(N(0.6), 0.02, 0.1, 0.6, 0.35)), 0.2),
+  };
+}
+
 const KLAENGE = {
   snake: () => ({ eat: beep(880, 55, 0.25, 20), die: chord([130, 98], 480, 0.35, 5) }),
   pong: () => ({ paddle: beep(480, 45, 0.35, 18), wall: beep(260, 30, 0.25, 18), score: beep(110, 450, 0.45, 18) }),
   mario: marioSounds,
   tetris: tetrisSounds,
+  pacman: pacmanSounds,
 };
 
 export function createTon() {

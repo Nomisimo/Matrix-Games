@@ -4,11 +4,12 @@ A collection of matrix-themed LED games for two 24×24 LED matrices (48×24 canv
 
 ## Desktop app (Electron)
 
-Snake, Pong, Mario Jump and Tetris in one app, built with the same architecture and design as the [Netzwerkplaner](https://github.com/Nomisimo/Netzwerkplaner) (Electron, React, esbuild), with a green accent colour.
+Snake, Pong, Mario Jump, Tetris and Pac-Man in one app, built with the same architecture and design as the [Netzwerkplaner](https://github.com/Nomisimo/Netzwerkplaner) (Electron, React, esbuild), with a green accent colour.
 
 - Pick the game in the top bar; keys are listed under the game.
 - **Demo / start screen:** every game opens as a text-free demo that plays itself. Enter or Space starts a round; after game over, on Esc, or after 30 s without input it returns to the demo. The **Können der Demo** slider (0–100 %) sets how well Snake and Pong play: at 100 % the snake follows a Hamiltonian cycle and fills the whole board, Mario walks the course endlessly at one speed.
 - **Tetris** is a portrait game: the two matrices stand on top of each other (24×48). The board has 10×20 cells of 2×2 pixels, the score is top left, the next piece top right, a faint ghost shows where the piece lands. SRS rotation with wall kicks, 7-bag, NES gravity and scoring, half a second lock delay, level up every 10 lines. Keys: ←/→ move, ↑/W/X rotate right, Z/Y rotate left, ↓ soft drop, Space hard drop; gamepad A rotates right, B/X left, Y hard drop. The game draws in portrait and turns the picture into the 48×24 frame (top of the game = left edge of the frame by default, option `drehung: "links"` for the other way). The demo places every piece by rating height, holes and bumpiness; the skill slider makes it worse and slower.
+- **Pac-Man** is a portrait game too (24×48). Two looks, switchable in the settings (**Pac-Man: Darstellung**, applies from the next round, the demo switches at once): *Große Figuren* (default) draws Pac-Man and the ghosts as 3×3 pixels, so Pac-Man's mouth shows where he is going and each ghost has an eye in its direction; the corridors are 3 pixels wide and the maze (23×40, right wall doubled) is smaller but keeps the arcade layout. *Original-Labyrinth* uses one pixel per tile: the 24×38 maze follows the arcade corridor by corridor (246 dots + 4 power pellets). Both have the tunnel, ghost house with door, fruit below it and Pac-Man's start below that; movement runs on the corridor centre lines, one arcade tile = one pixel. Score on top, lives and fruit at the bottom. The ghosts behave like the 1980 arcade: Blinky targets Pac-Man, Pinky 4 tiles ahead (with the up-direction overflow bug), Inky mirrors Blinky around the tile 2 ahead, Clyde chases only while more than 8 tiles away; decisions one tile ahead by straight-line distance with the up/left/down/right tie order, no upward turns in the four "red zone" tiles, scatter/chase timetable per level with reversals, frightened mode with per-level duration and flashing, ghost house dot counters (personal and global after a death, scaled to the number of dots like fruit and Elroy) plus the 4 s / 3 s idle timer, Cruise Elroy, per-level speed table, tunnel slowdown, Pac-Man pausing on dots and cutting corners. Keys: arrows/WASD. The **Pac-Man: Tempo** setting scales all speeds (100 % = arcade).
 - **sACN (E1.31):** start universe per matrix (default 29 and 33), pixels per universe (default 144 = 9 tiles of 4×4), network card to send from. Same tile mapping as `matrix-snake/sacn_output.py`.
 - **NDI:** 480×240 BGRA stream at 60 fps (every pixel 10×10). Needs the [NDI Runtime](https://ndi.video/tools/); it is loaded with `koffi`, the same way the Python version uses ctypes.
 - **Live view:** both matrices drawn exactly as the frame goes out on the network.
@@ -30,7 +31,7 @@ npm run dist:win   # .exe installer (NSIS, x64)
 src/main/          Electron main process; spiele/ausgabe.js = sACN and NDI sender
 src/preload/       IPC bridge (contextBridge)
 src/renderer/      React UI (App.jsx), sound (spiele/ton.js)
-src/shared/spiele/ game logic without UI: snake.js, pong.js, mario/, tetris.js
+src/shared/spiele/ game logic without UI: snake.js, pong.js, mario/, tetris.js, pacman.js
 test/              unit tests (node:test)
 ```
 

@@ -15,6 +15,7 @@ const ALLE = [
   { id: "pong", name: "PONG", farbe: [255, 50, 180] },
   { id: "mario", name: "MARIO", farbe: [255, 70, 50] },
   { id: "tetris", name: "TETRIS", farbe: [190, 60, 255] },
+  { id: "pacman", name: "PACMAN", farbe: [255, 220, 0] },
   { id: "drehen", name: "DREH", farbe: [255, 220, 0] },
 ];
 const OK = new Set(["Enter", "NumpadEnter", "Space", "Pause", "Digit1", "Numpad1"]);

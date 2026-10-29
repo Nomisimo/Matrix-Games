@@ -92,7 +92,7 @@ test("Pause-Einblendung passt auch auf eine Hochkant-Leinwand", () => {
 });
 
 test("Spielmenü: DREH stellt die Drehrichtung um", () => {
-  const m = createMenue({ aktuell: "tetris", drehung: "rechts" });
+  const m = createMenue({ aktuell: "pacman", drehung: "rechts" });
   m.key("ArrowDown");
   assert.equal(m.auswahl, "drehen");
   assert.deepEqual(m.key("ArrowLeft"), { drehung: "links" });
