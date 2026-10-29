@@ -168,7 +168,9 @@ ipcMain.handle('install-update', (_e, url) => shell.openExternal(/^https:\/\/git
 const ausgabe = require('./spiele/ausgabe').register(ipcMain, () => mainWin);
 // Drehsensor: meldet per HTTP, ob die Wand quer oder hochkant steht
 const drehsensor = require('./spiele/drehsensor').register(ipcMain, () => mainWin);
-app.on('before-quit', () => { ausgabe.stopAll(); drehsensor.stop(); });
+// Fernsteuerung: Controller-Seite im lokalen Netz, Eingaben wirken auch ohne Fenster-Fokus
+const fernsteuerung = require('./spiele/fernsteuerung').register(ipcMain, () => mainWin);
+app.on('before-quit', () => { ausgabe.stopAll(); drehsensor.stop(); fernsteuerung.stop(); });
 
 /* ── Start, Einzelinstanz ──────────────────────────────────────────────── */
 if (!app.requestSingleInstanceLock()) {

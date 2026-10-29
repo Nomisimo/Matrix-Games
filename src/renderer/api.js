@@ -21,6 +21,10 @@ export const api = {
   // Drehsensor (HTTP-Endpoint im Hauptprozess)
   drehsensor: (cfg) => (E?.drehsensor ? E.drehsensor(cfg) : Promise.resolve(null)),
   onDrehsensor: (cb) => (E?.onDrehsensor ? E.onDrehsensor(cb) : () => {}),
+  // Fernsteuerung (Controller-Seite und HTTP im Hauptprozess)
+  fernsteuerung: (cfg) => (E?.fernsteuerung ? E.fernsteuerung(cfg) : Promise.resolve(null)),
+  onFernStatus: (cb) => (E?.onFernStatus ? E.onFernStatus(cb) : () => {}),
+  onFernEingabe: (cb) => (E?.onFernEingabe ? E.onFernEingabe(cb) : () => {}),
   // Updates
   fetchReleases: () => (E?.fetchReleases ? E.fetchReleases() : fetch("https://api.github.com/repos/Nomisimo/Matrix-Games/releases?per_page=20").then((r) => (r.ok ? r.json() : null)).catch(() => null)),
   checkForUpdates: () => (E?.checkForUpdates ? E.checkForUpdates() : Promise.resolve({ auto: false })),

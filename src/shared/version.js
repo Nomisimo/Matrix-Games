@@ -6,6 +6,10 @@ export const REPO = "Nomisimo/Matrix-Games";
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 
 export const CHANGELOG = {
+  "1.0.0-beta.8": [
+    "Fernsteuerung (LAN): ein Handy, Tablet oder Laptop an der LED-Matrix öffnet die Controller-Seite im Browser (Adresse und QR-Code in den Einstellungen) und steuert die App per Touch, Tastatur oder Gamepad. Die Eingaben wirken, ohne dass das App-Fenster den Fokus hat; Spieler 1 oder 2 wählbar (Pong)",
+    "Für Stream Deck, Bitfocus Companion oder Skripte: Knöpfe per HTTP antippen oder halten (/knopf/a, /knopf/rechts/an und /aus, ?spieler=2)",
+  ],
   "1.0.0-beta.7": [
     "Matrix drehen: jede der beiden Matrizen einzeln um 0°, 90°, 180° oder 270° drehen und spiegeln, für Hälften, die anders verbaut sind; gilt für sACN und NDI, mit dem Testbild auszurichten",
   ],

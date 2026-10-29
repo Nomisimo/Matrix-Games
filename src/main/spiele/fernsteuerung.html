@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#1c2127">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Matrix Games · Controller</title>
+<style>
+  /* Gleiche Farben wie die App (Dunkel, Akzent Grün) */
+  :root { --bg: #15191e; --dark: #1c2127; --panel: #252b33; --line: #3a424c; --text: #e8eaed; --sub: #9aa4af; --muted: #7c8794; --accent: #27ae60; --ok: #2ecc71; --warn: #f39c12; --err: #ff5d5d; --btn: #323a44; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; overflow: hidden; }
+  body { display: flex; flex-direction: column; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  header { display: flex; align-items: center; gap: 10px; padding: 8px 14px; padding-top: max(8px, env(safe-area-inset-top)); background: var(--dark); border-bottom: 2px solid var(--accent); flex-wrap: wrap; }
+  .logo { font-weight: 800; font-size: 16px; letter-spacing: 1px; color: var(--accent); white-space: nowrap; }
+  .meta { font-size: 12px; color: var(--sub); flex: 1; min-width: 100px; display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--err); flex-shrink: 0; }
+  .dot.ok { background: var(--ok); }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button { background: transparent; color: var(--sub); border: none; padding: 6px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .seg button.an { background: var(--accent); color: #fff; }
+  .klein { background: var(--btn); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer; }
+  main { flex: 1; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; justify-items: center; padding: 12px max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); gap: 10px; touch-action: none; min-height: 0; }
+  /* Steuerkreuz: eine Fläche, die Richtung kommt aus der Fingerposition (Daumen kann rutschen) */
+  .kreuz { position: relative; width: min(42vw, 62vh, 300px); aspect-ratio: 1; touch-action: none; }
+  .kreuz .arm { position: absolute; background: var(--panel); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; color: var(--sub); font-size: 22px; }
+  .kreuz .arm.an { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .kreuz .h { left: 33.3%; width: 33.4%; height: 36%; }
+  .kreuz .v { top: 33.3%; height: 33.4%; width: 36%; }
+  .kreuz .oben { top: 0; border-radius: 10px 10px 0 0; } .kreuz .unten { bottom: 0; border-radius: 0 0 10px 10px; }
+  .kreuz .links { left: 0; border-radius: 10px 0 0 10px; } .kreuz .rechts { right: 0; border-radius: 0 10px 10px 0; }
+  .kreuz .mitte { position: absolute; left: 33.3%; top: 33.3%; width: 33.4%; height: 33.4%; background: var(--panel); }
+  .mitte-spalte { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .pill { min-width: 84px; padding: 12px 14px; border-radius: 22px; background: var(--btn); border: 1px solid var(--line); color: var(--text); font-size: 13px; font-weight: 700; text-align: center; touch-action: none; }
+  .pill.an, .rund.an { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .info { font-size: 12px; color: var(--sub); text-align: center; max-width: 220px; line-height: 1.5; }
+  .info b { color: var(--text); }
+  /* A/B/X/Y wie am Gamepad: Y oben, A unten, X links, B rechts */
+  .knoepfe { position: relative; width: min(42vw, 62vh, 300px); aspect-ratio: 1; }
+  .rund { position: absolute; width: 36%; height: 36%; border-radius: 50%; background: var(--panel); border: 2px solid var(--line); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 800; font-size: 24px; touch-action: none; }
+  .rund small { font-size: 10px; font-weight: 600; color: var(--sub); margin-top: 1px; }
+  .rund.an small { color: #e8ffe8; }
+  .rund.y { left: 32%; top: 0; } .rund.a { left: 32%; bottom: 0; } .rund.x { left: 0; top: 32%; } .rund.b { right: 0; top: 32%; }
+  .hinweis { font-size: 11px; color: var(--muted); padding: 6px 14px 8px; text-align: center; line-height: 1.5; }
+  .hinweis.warn { color: var(--warn); }
+  code { background: var(--panel); padding: 1px 4px; border-radius: 3px; user-select: text; -webkit-user-select: text; }
+  @media (orientation: portrait) and (max-width: 700px) {
+    main { grid-template-columns: 1fr 1fr; grid-template-rows: auto 1fr; }
+    .mitte-spalte { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; justify-content: center; order: -1; }
+    .kreuz, .knoepfe { width: min(44vw, 300px); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">MATRIX GAMES</span>
+  <span class="meta"><span class="dot" id="dot"></span><span id="verbindung">verbindet …</span></span>
+  <div class="seg" id="spielerWahl" title="Für Pong: Spieler 1 spielt links, Spieler 2 rechts">
+    <button data-s="1" class="an">Spieler 1</button><button data-s="2">Spieler 2</button>
+  </div>
+  <button class="klein" id="vollbild">Vollbild</button>
+</header>
+<main>
+  <div class="kreuz" id="kreuz">
+    <div class="mitte"></div>
+    <div class="arm h oben" data-k="12">▲</div><div class="arm h unten" data-k="13">▼</div>
+    <div class="arm v links" data-k="14">◀</div><div class="arm v rechts" data-k="15">▶</div>
+  </div>
+  <div class="mitte-spalte">
+    <div class="pill" data-k="8">Select</div>
+    <div class="info" id="info">Spiel: <b id="spiel">–</b></div>
+    <div class="pill" data-k="9">Start</div>
+  </div>
+  <div class="knoepfe">
+    <div class="rund y" data-k="3">Y<small></small></div>
+    <div class="rund x" data-k="2">X<small></small></div>
+    <div class="rund b" data-k="1">B<small></small></div>
+    <div class="rund a" data-k="0">A<small></small></div>
+  </div>
+</main>
+<div class="hinweis" id="hinweis">Touch, Tastatur und ein Gamepad an diesem Gerät steuern die App in der Regie.</div>
+<script>
+(() => {
+  // Stand dieses Controllers; geht bei jeder Änderung und alle 300 ms an die App
+  const id = (() => { try { return sessionStorage.mgId || (sessionStorage.mgId = 'c' + Math.random().toString(36).slice(2, 10)); } catch { return 'c' + Math.random().toString(36).slice(2, 10); } })();
+  let spieler = 1;
+  try { spieler = +localStorage.mgSpieler === 2 ? 2 : 1; } catch {}
+  const touch = new Map();          // Finger (pointerId) → Knopf
+  let kreuz = new Set();            // Richtungen aus dem Steuerkreuz
+  const tasten = new Set();         // Tastatur-Codes
+  let padKnoepfe = [];              // je Gamepad an diesem Gerät die gedrückten Knöpfe
+  let seq = 0, gesendet = '', zuletztOk = 0, unterwegs = 0;
+
+  const knoepfeTouch = () => new Set([...touch.values()].filter((k) => k >= 0).concat([...kreuz]));
+  const stand = () => {
+    // Touch und das erste Gamepad sind der gewählte Spieler, ein zweites Gamepad der andere
+    const pads = [{ spieler, knoepfe: [...new Set([...knoepfeTouch(), ...(padKnoepfe[0] || [])])].sort((a, b) => a - b) }];
+    for (let i = 1; i < padKnoepfe.length; i++) pads.push({ spieler: ((spieler - 1 + i) % 2) + 1, knoepfe: padKnoepfe[i] });
+    return { tasten: [...tasten].sort(), pads };
+  };
+  const senden = (immer) => {
+    const s = stand(), j = JSON.stringify(s);
+    if (!immer && j === gesendet) return;
+    gesendet = j;
+    if (unterwegs > 8) return;      // Netz hängt: nicht stapeln, der Herzschlag schickt den Stand nach
+    unterwegs++;
+    const t0 = performance.now();
+    fetch('/eingabe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, seq: ++seq, name: geraet, ...s }) })
+      .then((r) => r.json()).then((st) => { zuletztOk = Date.now(); zeigeStatus(st, performance.now() - t0); })
+      .catch(() => {}).finally(() => unterwegs--);
+  };
+  const geraet = /iPhone|iPad/.test(navigator.userAgent) ? 'iPhone/iPad' : /Android/.test(navigator.userAgent) ? 'Android' : /Mac/.test(navigator.platform) ? 'Mac' : /Win/.test(navigator.platform) ? 'Windows' : 'Browser';
+
+  // Beschriftung der Knöpfe je Spiel
+  const BELEGUNG = {
+    snake: { 0: 'Start' }, pong: { 0: 'Start' },
+    mario: { 0: 'Springen', 1: 'Rennen', 2: 'Feuer' },
+    tetris: { 0: 'dreht ↻', 1: 'dreht ↺', 2: 'dreht ↺', 3: 'fällt' },
+  };
+  let spielId = '';
+  const zeigeStatus = (st, ms) => {
+    if (st?.spielId !== spielId) {
+      spielId = st?.spielId || '';
+      const b = BELEGUNG[spielId] || {};
+      document.querySelectorAll('.rund').forEach((el) => { el.querySelector('small').textContent = b[el.dataset.k] || ''; });
+    }
+    document.getElementById('spiel').textContent = st?.spiel || '–';
+    if (ms != null) document.getElementById('verbindung').textContent = `verbunden · ${Math.round(ms)} ms`;
+  };
+  setInterval(() => {
+    const ok = Date.now() - zuletztOk < 1500;
+    document.getElementById('dot').classList.toggle('ok', ok);
+    if (!ok) document.getElementById('verbindung').textContent = 'keine Verbindung zur App';
+  }, 500);
+  setInterval(() => senden(true), 300);
+
+  const markieren = () => {
+    const an = new Set([...knoepfeTouch(), ...padKnoepfe.flat()]);
+    document.querySelectorAll('[data-k]').forEach((el) => el.classList.toggle('an', an.has(+el.dataset.k)));
+  };
+  const geaendert = () => { markieren(); senden(); };
+  const brumm = () => { try { navigator.vibrate?.(8); } catch {} };
+
+  // Knöpfe: jeder Finger hält seinen Knopf, bis er losgelassen wird
+  document.querySelectorAll('.pill[data-k], .rund[data-k]').forEach((el) => {
+    el.addEventListener('pointerdown', (e) => { e.preventDefault(); el.setPointerCapture?.(e.pointerId); touch.set(e.pointerId, +el.dataset.k); brumm(); geaendert(); });
+  });
+  const los = (e) => { if (touch.delete(e.pointerId)) geaendert(); };
+  window.addEventListener('pointerup', los);
+  window.addEventListener('pointercancel', los);
+
+  // Steuerkreuz: Richtung aus dem Winkel zur Mitte, mit Diagonalen und kleiner Totzone
+  const kreuzEl = document.getElementById('kreuz'), kreuzFinger = new Map();
+  const richtung = (e) => {
+    const r = kreuzEl.getBoundingClientRect();
+    const dx = (e.clientX - r.left) / r.width - 0.5, dy = (e.clientY - r.top) / r.height - 0.5;
+    const out = new Set();
+    if (Math.hypot(dx, dy) < 0.1) return out;
+    const w = Math.atan2(dy, dx) * 180 / Math.PI;   // 0 = rechts, 90 = unten
+    if (w > -67.5 && w < 67.5) out.add(15);
+    if (w > 112.5 || w < -112.5) out.add(14);
+    if (w > 22.5 && w < 157.5) out.add(13);
+    if (w < -22.5 && w > -157.5) out.add(12);
+    return out;
+  };
+  const kreuzNeu = () => {
+    const n = new Set();
+    for (const s of kreuzFinger.values()) for (const k of s) n.add(k);
+    if ([...n].some((k) => !kreuz.has(k))) brumm();
+    if (n.size !== kreuz.size || [...n].some((k) => !kreuz.has(k))) { kreuz = n; geaendert(); }
+  };
+  kreuzEl.addEventListener('pointerdown', (e) => { e.preventDefault(); kreuzEl.setPointerCapture?.(e.pointerId); kreuzFinger.set(e.pointerId, richtung(e)); kreuzNeu(); });
+  kreuzEl.addEventListener('pointermove', (e) => { if (kreuzFinger.has(e.pointerId)) { kreuzFinger.set(e.pointerId, richtung(e)); kreuzNeu(); } });
+  const kreuzLos = (e) => { if (kreuzFinger.delete(e.pointerId)) kreuzNeu(); };
+  kreuzEl.addEventListener('pointerup', kreuzLos);
+  kreuzEl.addEventListener('pointercancel', kreuzLos);
+  document.addEventListener('contextmenu', (e) => e.preventDefault());
+  document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+
+  // Tastatur an diesem Gerät: die Codes gehen so an die App, als wäre die Tastatur dort angeschlossen
+  window.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    e.preventDefault();
+    if (!tasten.has(e.code)) { tasten.add(e.code); senden(); }
+  });
+  window.addEventListener('keyup', (e) => { if (tasten.delete(e.code)) senden(); });
+  // Fenster verliert den Fokus oder geht in den Hintergrund: alles loslassen
+  const allesLos = () => { tasten.clear(); touch.clear(); kreuzFinger.clear(); kreuz = new Set(); geaendert(); };
+  window.addEventListener('blur', allesLos);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { allesLos(); navigator.sendBeacon?.('/eingabe', new Blob([JSON.stringify({ id, weg: true, tasten: [], pads: [] })], { type: 'application/json' })); }
+  });
+
+  // Gamepad an diesem Gerät (Browser erlauben das nur über https oder localhost, siehe Hinweis)
+  const gamepadsGehen = typeof navigator.getGamepads === 'function' && window.isSecureContext !== false;
+  let gamepadsDa = 0;
+  const pollen = () => {
+    let liste = [];
+    try { liste = [...(navigator.getGamepads?.() || [])].filter(Boolean); } catch {}
+    const neu = liste.map((p) => {
+      const k = [];
+      p.buttons.forEach((b, n) => { if (b?.pressed && n <= 16) k.push(n); });
+      const ax = (n) => p.axes[n] || 0;
+      if (ax(1) < -0.5) k.push(12); if (ax(1) > 0.5) k.push(13); if (ax(0) < -0.5) k.push(14); if (ax(0) > 0.5) k.push(15);
+      return [...new Set(k)].sort((a, b) => a - b);
+    });
+    if (JSON.stringify(neu) !== JSON.stringify(padKnoepfe)) { padKnoepfe = neu; geaendert(); }
+    if (liste.length !== gamepadsDa) { gamepadsDa = liste.length; hinweis(); }
+  };
+  if (gamepadsGehen) setInterval(pollen, 8);
+  const hinweis = () => {
+    const el = document.getElementById('hinweis');
+    if (!gamepadsGehen) {
+      el.className = 'hinweis warn';
+      el.innerHTML = `Touch und Tastatur gehen. Für ein Gamepad an diesem Gerät die Seite in Chrome oder Edge freigeben: <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code> → <code>${location.origin}</code> eintragen, Enabled, neu starten.`;
+    } else if (gamepadsDa) {
+      el.className = 'hinweis';
+      el.textContent = gamepadsDa === 1 ? 'Gamepad verbunden: spielt als gewählter Spieler.' : `${gamepadsDa} Gamepads verbunden: das zweite spielt als der andere Spieler.`;
+    } else {
+      el.className = 'hinweis';
+      el.textContent = 'Touch, Tastatur oder ein Gamepad an diesem Gerät (einmal einen Knopf drücken) steuern die App in der Regie.';
+    }
+  };
+  hinweis();
+
+  // Spieler wählen (Pong: 1 links, 2 rechts)
+  const wahl = document.getElementById('spielerWahl');
+  const zeigeSpieler = () => wahl.querySelectorAll('button').forEach((b) => b.classList.toggle('an', +b.dataset.s === spieler));
+  wahl.addEventListener('click', (e) => {
+    const s = +e.target.dataset?.s;
+    if (!s) return;
+    spieler = s; try { localStorage.mgSpieler = s; } catch {}
+    zeigeSpieler(); senden(true);
+  });
+  zeigeSpieler();
+  document.getElementById('vollbild').addEventListener('click', () => {
+    const d = document.documentElement;
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else (d.requestFullscreen || d.webkitRequestFullscreen)?.call(d)?.catch?.(() => {});
+  });
+  senden(true);
+})();
+</script>
+</body>
+</html>

@@ -14,6 +14,7 @@ Snake, Pong, Mario Jump and Tetris in one app, built with the same architecture 
 - **Live view:** both matrices drawn exactly as the frame goes out on the network.
 - **Matrix an/aus:** blacks out the LED matrices (sACN and NDI keep sending, but black) while the game keeps running.
 - **Input:** keyboard (also through a KVM switch or KVM-over-IP, as long as the app window has focus) and gamepads (D-pad/stick = arrows, A = jump/start, B/X = run/fire, Start = Enter, Select = Esc; in Pong pad 1 is the left paddle, pad 2 the right one).
+- **Remote control over the LAN** (*Fernsteuerung*, settings): the app serves a controller page on port 8788. A phone, tablet or laptop next to the LED wall opens it (address and QR code in the settings) and plays with touch buttons, its keyboard or a gamepad; the input reaches the game in the main process, so the app window does not need focus. Player 1/2 is selectable (Pong). A gamepad on that device needs a secure context in Chrome/Edge: add the page under `chrome://flags/#unsafely-treat-insecure-origin-as-secure`. For Stream Deck/Companion or scripts: `GET /knopf/<a|b|x|y|start|select|hoch|runter|links|rechts>` taps a button (`?spieler=2`, `?dauer=ms`), `/knopf/<name>/an` and `/aus` hold and release it. A controller that stops reporting for 1.5 s releases everything.
 - Output keeps running while you switch games and while the window is minimised. There is one sACN output and one NDI stream; it always shows the game that is selected.
 
 ```bash
@@ -27,7 +28,7 @@ npm run dist:win   # .exe installer (NSIS, x64)
 **Updates and releases** work like in the Netzwerkplaner. The app checks GitHub for a newer release at start (click the version badge for the changelog and "Nach Updates suchen"). Windows installs it by itself (electron-updater); on macOS the app downloads the matching DMG and opens it. Releases are built only on demand: push a tag `v<version>` or start *Actions → Release → Run workflow*. Windows x64 plus macOS Apple Silicon and Intel; the release text comes from `src/shared/version.js`.
 
 ```
-src/main/          Electron main process; spiele/ausgabe.js = sACN and NDI sender
+src/main/          Electron main process; spiele/ausgabe.js = sACN and NDI sender, spiele/fernsteuerung.js = LAN controller
 src/preload/       IPC bridge (contextBridge)
 src/renderer/      React UI (App.jsx), sound (spiele/ton.js)
 src/shared/spiele/ game logic without UI: snake.js, pong.js, mario/, tetris.js
