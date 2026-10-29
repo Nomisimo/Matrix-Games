@@ -8,6 +8,7 @@ export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 export const CHANGELOG = {
   "1.0.0-beta.8": [
     "Fernsteuerung (LAN): ein Handy, Tablet oder Laptop an der LED-Matrix öffnet die Controller-Seite im Browser (Adresse und QR-Code in den Einstellungen) und steuert die App per Touch, Tastatur oder Gamepad. Die Eingaben wirken, ohne dass das App-Fenster den Fokus hat; Spieler 1 oder 2 wählbar (Pong)",
+    "Controller-Programm für Raspberry Pi oder PC an der Matrix (fernsteuerung-controller/): Gamepads dort steuern die App ohne Browser und ohne Fenster, findet die App im Netz selbst, Autostart per systemd",
     "Für Stream Deck, Bitfocus Companion oder Skripte: Knöpfe per HTTP antippen oder halten (/knopf/a, /knopf/rechts/an und /aus, ?spieler=2)",
   ],
   "1.0.0-beta.7": [

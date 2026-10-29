@@ -102,7 +102,7 @@ function createFernsteuerung({ onEingabe = () => {}, onStatus = () => {}, seiteP
     res.writeHead(code, { 'Content-Type': typ, 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type' });
     res.end(typeof body === 'string' ? body : JSON.stringify(body));
   };
-  const stand = () => ({ ok: true, ...info });
+  const stand = () => ({ ok: true, app: 'matrix-games', ...info });
 
   const handler = (req, res) => {
     const url = new URL(req.url, 'http://x');

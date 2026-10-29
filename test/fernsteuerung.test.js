@@ -34,7 +34,7 @@ test("Controller-Seite, Status und Eingaben über HTTP", async () => {
   try {
     const html = await (await fetch(`http://127.0.0.1:${port}/`)).text();
     assert.match(html, /MATRIX GAMES/);
-    assert.deepEqual(await (await fetch(`http://127.0.0.1:${port}/status`)).json(), { ok: true, spiel: "Snake", spielId: "snake" });
+    assert.deepEqual(await (await fetch(`http://127.0.0.1:${port}/status`)).json(), { ok: true, app: "matrix-games", spiel: "Snake", spielId: "snake" });
 
     let r = await post(port, { id: "handy1", seq: 2, name: "Android", tasten: [], pads: [{ spieler: 1, knoepfe: [0] }] });
     assert.equal(r.status, 200);
