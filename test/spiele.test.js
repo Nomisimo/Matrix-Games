@@ -588,6 +588,9 @@ test("Spielmenü: wählt Spiel und Pong-Modus, Esc führt zurück", () => {
   assert.equal(m.auswahl, "tetris");
   assert.deepEqual(m.key("Enter"), { start: "tetris", taste: "Enter" });
   m.key("ArrowDown");
+  assert.equal(m.auswahl, "pacman");
+  assert.deepEqual(m.key("Enter"), { start: "pacman", taste: "Enter" });
+  m.key("ArrowDown");
   assert.equal(m.auswahl, "drehen");
   m.key("ArrowDown");
   assert.equal(m.auswahl, "snake");
@@ -744,7 +747,7 @@ test("Anleitung: jedes Spiel hat Tastatur, Gamepad und Ziel; PDF enthält nur di
     assert.ok(s.tasten?.length && s.gamepad?.length && s.ziel, s.id);
   }
   const gewaehlt = verfuegbareSpiele(SPIELE, ["pong"]);
-  assert.deepEqual(gewaehlt.map((s) => s.id), ["snake", "mario", "tetris"]);
+  assert.deepEqual(gewaehlt.map((s) => s.id), ["snake", "mario", "tetris", "pacman"]);
   const html = anleitungHtml({ spiele: gewaehlt, version: "1.0.0", menue: true });
   assert.match(html, /<h2>Snake<\/h2>/);
   assert.match(html, /<h2>Mario Jump<\/h2>/);

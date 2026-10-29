@@ -12,6 +12,7 @@ import { createPong, createPongDemo } from "./pong.js";
 import { createMario, FONT as MARIO_FONT } from "./mario/index.js";
 import { createMarioDemo } from "./mario/demo.js";
 import { createTetris, createTetrisDemo } from "./tetris.js";
+import { createPacman, createPacmanDemo } from "./pacman.js";
 export { Bild, W, H } from "./pixel.js";
 
 const FPS = 60;
@@ -132,4 +133,11 @@ export const SPIELE = [
     pads: "Bei Tetris: A dreht rechtsrum, B dreht linksrum, Y lässt den Stein fallen, ↓ lässt ihn schneller fallen.",
     ziel: "Lege die fallenden Steine so, dass waagerechte Reihen lückenlos voll werden. Volle Reihen verschwinden und bringen Punkte, vier auf einmal (ein Tetris) die meisten. Alle 10 Reihen steigt das Level und die Steine fallen schneller. Die Runde endet, wenn sich die Steine bis oben stapeln. Tetris ist ein Hochkant-Spiel: die beiden Matrizen stehen dafür übereinander.",
     tipps: ["Oben rechts steht der nächste Stein.", "Der blasse Schatten zeigt, wo der Stein landet. Wie hell er ist, lässt sich in den Einstellungen ändern.", "Am Boden bleibt eine halbe Sekunde Zeit, den Stein noch zu schieben oder zu drehen."] },
+  { id: "pacman", name: "Pac-Man", hochkant: true,
+    create: mitDemo({ create: createPacman, demo: createPacmanDemo, starte: (s) => s.key("Enter") }),
+    rekord: "Punkte",
+    tasten: [["Enter / Leertaste", "Start (aus der Demo)"], ["Pfeile / WASD", "Richtung (gilt an der nächsten Abzweigung)"], ...ALLGEMEIN],
+    gamepad: [["A", "Start (aus der Demo)"], ["Steuerkreuz / linker Stick", "Richtung (gilt an der nächsten Abzweigung)"], ...PAD_ALLGEMEIN],
+    ziel: "Friss alle Punkte im Labyrinth, ohne dass dich ein Geist erwischt. Nach einer Kraftpille (die großen, blinkenden Punkte) werden die Geister blau und lassen sich fressen: 200, 400, 800 und 1600 Punkte. Zweimal je Level erscheint unter dem Geisterhaus eine Frucht. Sind alle Punkte gefressen, geht es ins nächste, schnellere Level. Du hast drei Leben, bei 10.000 Punkten gibt es eins dazu. Pac-Man ist ein Hochkant-Spiel: die beiden Matrizen stehen dafür übereinander.",
+    tipps: ["Die Geister verhalten sich wie im Original: Blinky (rot) jagt dich direkt, Pinky (rosa) zielt vor dich, Inky (hellblau) kommt von der anderen Seite, Clyde (orange) dreht ab, wenn er nah ist.", "Die Geister wechseln zwischen Jagen und Rückzug in ihre Ecken. Bei jedem Wechsel drehen alle um.", "Im Tunnel an der Seite sind die Geister langsamer, Pac-Man nicht.", "Kurz bevor die blaue Zeit endet, blinken die Geister weiß.", "Drück die Richtung schon vor der Abzweigung, dann schneidet Pac-Man die Kurve."] },
 ];
