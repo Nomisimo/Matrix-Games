@@ -9,6 +9,7 @@ import { createTon } from "./spiele/ton.js";
 import { Toggle, Dot, Card, Table, td, Hint, Modal } from "./ui.jsx";
 import { CHANGELOG, compareVersions, neuesteVersion, istBeta, RELEASES_URL } from "../shared/version.js";
 import { Volume2, VolumeX, RotateCcw, RefreshCw, TriangleAlert, Gamepad2, Sun, Moon, Monitor, Power, Keyboard, ArrowUpCircle, Download, Pause, Play, Trophy, FileDown, RotateCw, Compass, FlipHorizontal2 } from "lucide-react";
+import qrcode from "qrcode-generator";
 import APP_ICON_SVG from "../../assets/app-icon/icon.svg";
 const APP_ICON = `data:image/svg+xml;utf8,${encodeURIComponent(APP_ICON_SVG)}`;
 
@@ -16,12 +17,13 @@ const LS = "matrixgames_einstellungen";
 // Vorgaben wie im Snake-Original auf der echten Matrix (Universe 29 und 33, 144 Pixel je Universe)
 // menue: Spielmenü auf der Matrix; leerlauf: Sekunden ohne Eingabe bis zur Demo (0 = nie);
 // comStaerke: Pong-Computer in %; tetrisSchatten: Helligkeit des Tetris-Schattens in % der Steinfarbe; vorhersage: Verzögerung der Ausgabe in ms (Snake); rekorde: Highscore je Spiel; aus: abgewählte Spiele (ids);
-// drehung: in welche Richtung die Wand für Hochkant-Spiele gedreht wird; sensor: HTTP-Endpoint für einen Drehsensor
-const STANDARD = { spiel: "snake", aus: [], ton: true, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, tetrisSchatten: 12, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games", pixel: 10 }, haelften: [{ dreh: 0, spiegeln: false }, { dreh: 0, spiegeln: false }] };
+// drehung: in welche Richtung die Wand für Hochkant-Spiele gedreht wird; sensor: HTTP-Endpoint für einen Drehsensor;
+// fern: Fernsteuerung über das Netzwerk (Controller-Seite für ein Gerät an der Matrix)
+const STANDARD = { spiel: "snake", aus: [], ton: true, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, tetrisSchatten: 12, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, fern: { on: false, port: 8788 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games", pixel: 10 }, haelften: [{ dreh: 0, spiegeln: false }, { dreh: 0, spiegeln: false }] };
 const laden = () => {
   try {
     const v = JSON.parse(localStorage.getItem(LS) || "null");
-    return v ? { ...STANDARD, ...v, aus: Array.isArray(v.aus) ? v.aus : [], rekorde: { ...v.rekorde }, sensor: { ...STANDARD.sensor, ...v.sensor }, sacn: { ...STANDARD.sacn, ...v.sacn }, ndi: { ...STANDARD.ndi, ...v.ndi },
+    return v ? { ...STANDARD, ...v, aus: Array.isArray(v.aus) ? v.aus : [], rekorde: { ...v.rekorde }, sensor: { ...STANDARD.sensor, ...v.sensor }, fern: { ...STANDARD.fern, ...v.fern }, sacn: { ...STANDARD.sacn, ...v.sacn }, ndi: { ...STANDARD.ndi, ...v.ndi },
       haelften: STANDARD.haelften.map((h, i) => ({ ...h, ...(Array.isArray(v.haelften) ? v.haelften[i] : null) })) } : STANDARD;
   } catch { return STANDARD; }
 };
@@ -44,13 +46,12 @@ const MENUE_TASTEN = new Set(["Enter", "NumpadEnter", "Space", "Pause", "Digit1"
    B/X = Shift (Rennen, Feuer), Start = Pause (startet aus der Demo), Select = Esc. Bei Pong
    steuert Pad 1 den linken Schläger (W/S) und Pad 2 den rechten (↑/↓). Im Startbild (Demo oder
    Spielmenü) melden A und Start an Pad 2 „2“: Pong startet dann zu zweit. Bei Tetris dreht A
-   rechtsrum, B/X linksrum, Y lässt den Stein fallen. */
+   rechtsrum, B/X linksrum, Y lässt den Stein fallen. Ferngesteuerte Pads (über das Netzwerk) kommen
+   als nachgebaute Gamepads dazu; ihr Platz in der Liste ist der Spieler (Lücken bleiben frei). */
 const LEERLAUF_STUFEN = [10, 15, 20, 30, 45, 60, 90, 120, 180, 300, 0];
 const leerlaufText = (s) => (s ? (s < 60 ? `${s} s` : `${s / 60} min`) : "nie");
-function padTasten(spiel, imStart) {
+function padTasten(spiel, imStart, pads) {
   const out = new Set();
-  let pads = [];
-  try { pads = [...(navigator.getGamepads?.() || [])].filter(Boolean); } catch { return out; }
   pads.forEach((p, i) => {
     const b = (n) => !!p.buttons[n]?.pressed, ax = (n) => p.axes[n] || 0;
     const hoch = b(12) || ax(1) < -0.5, runter = b(13) || ax(1) > 0.5;
@@ -75,6 +76,24 @@ function padTasten(spiel, imStart) {
     if (b(8)) out.add("Escape");
   });
   return out;
+}
+// Nachgebautes Gamepad aus den Knopf-Nummern eines Fern-Controllers
+const fernPad = (knoepfe) => ({ buttons: Array.from({ length: 17 }, (_, n) => ({ pressed: knoepfe.has(n) })), axes: [0, 0, 0, 0] });
+// Gamepads am Mac und Fern-Pads zusammen: ein Fern-Pad sitzt auf dem Platz seines Spielers,
+// die Gamepads am Mac füllen die freien Plätze von vorn
+function allePads(fern) {
+  let lokal = [];
+  try { lokal = [...(navigator.getGamepads?.() || [])].filter(Boolean); } catch {}
+  const plaetze = [];
+  for (const c of fern.values()) for (const p of c.pads) {
+    let i = p.spieler;
+    while (plaetze[i]) i++;
+    plaetze[i] = fernPad(new Set([...p.knoepfe, ...p.neu]));
+    p.neu.clear();
+  }
+  let i = 0;
+  for (const p of lokal) { while (plaetze[i]) i++; plaetze[i++] = p; }
+  return plaetze;
 }
 const anzahlUniverses = (fpu) => Math.ceil(576 / Math.max(1, Math.min(170, +fpu || 144)));
 const THEMES = [["system", "wie das System", Monitor], ["hell", "Hell", Sun], ["dunkel", "Dunkel", Moon]];
@@ -115,6 +134,9 @@ export default function App() {
   const [zustand, setZustand] = useState("demo");
   const [tippt, setTippt] = useState(false);
   const [pads, setPads] = useState(0);
+  const [fernSt, setFernSt] = useState(null);
+  // Fern-Controller: id → { tasten: Set, pads: [{ spieler, knoepfe: Set, neu: Set }] }
+  const fern = useRef(new Map());
   const [update, setUpdate] = useState(null);
   const [updateStatus, setUpdateStatus] = useState("");
   const [changelog, setChangelog] = useState(false);
@@ -191,6 +213,33 @@ export default function App() {
   }, [cfg.sensor.on, cfg.sensor.port, spielDef.id, cfg.drehung]);
   useEffect(() => api.onDrehsensor(setSensorSt), []);
 
+  // Fernsteuerung: Server im Hauptprozess; die Controller-Seite zeigt das gewählte Spiel
+  useEffect(() => {
+    if (isElectron) api.fernsteuerung({ on: cfg.fern.on, port: +cfg.fern.port || 8788, spiel: spielDef.name, spielId: spielDef.id }).then((st) => st && setFernSt(st));
+  }, [cfg.fern.on, cfg.fern.port, spielDef.id]);
+  useEffect(() => api.onFernStatus(setFernSt), []);
+  /* Eingaben der Fern-Controller kommen per IPC, unabhängig vom Fenster-Fokus. Neue Tasten wirken
+     sofort wie ein Tastendruck; neue Knöpfe merkt sich „neu“, damit auch ein kurzes Antippen
+     zwischen zwei Spielschritten mindestens einen Schritt lang gedrückt ist. */
+  useEffect(() => api.onFernEingabe((e) => {
+    const alt = fern.current.get(e.id);
+    // Controller weg: entfernen, außer ein Antippen wartet noch auf seinen Spielschritt
+    if (!e.tasten.length && !e.pads.length) {
+      if (alt?.pads.some((p) => p.neu.size)) fern.current.set(e.id, { tasten: new Set(), pads: alt.pads.map((p) => ({ ...p, knoepfe: new Set() })) });
+      else fern.current.delete(e.id);
+      return;
+    }
+    const tasten = new Set(e.tasten);
+    const pads = e.pads.map((p, i) => {
+      const vorher = alt?.pads[i];
+      const knoepfe = new Set(p.knoepfe), neu = new Set(vorher?.neu);
+      for (const k of knoepfe) if (!vorher?.knoepfe.has(k)) neu.add(k);
+      return { spieler: p.spieler, knoepfe, neu };
+    });
+    fern.current.set(e.id, { tasten, pads });
+    for (const c of tasten) if (!alt?.tasten.has(c)) { tasteRef.current(c); if (menueRef.current) menueRef.current.leer = 0; }
+  }), []);
+
   // Ton
   useEffect(() => { tonRef.current = createTon(); return () => tonRef.current.close(); }, []);
   useEffect(() => { tonRef.current.setAn(cfg.ton); }, [cfg.ton]);
@@ -266,11 +315,14 @@ export default function App() {
       const g = gameRef.current;
       if (!g) return;
       // Gamepad: neu gedrückte Tasten wie Tastendrücke melden, gehaltene mitgeben
-      const pad = padTasten(spielRef.current, menueRef.current ? "menue" : g.state === "demo");
+      const pad = padTasten(spielRef.current, menueRef.current ? "menue" : g.state === "demo", allePads(fern.current));
       for (const c of pad) if (!padVorher.has(c)) tasteRef.current(c);
       padVorher = pad;
+      // Gehalten: Tastatur am Mac, Gamepads und Tasten der Fern-Controller
       let gehalten = held.current;
-      if (pad.size) { gehalten = new Set(held.current); for (const c of pad) gehalten.add(c); }
+      const fernTasten = [];
+      for (const f of fern.current.values()) fernTasten.push(...f.tasten);
+      if (pad.size || fernTasten.length) { gehalten = new Set(held.current); for (const c of pad) gehalten.add(c); for (const c of fernTasten) gehalten.add(c); }
       // Der Timer tickt alle 4 ms: knapp vor der Zeit zählt schon, sonst schwankt der Abstand zwischen 16 und 20 ms
       let schritte = 0;
       const m = menueRef.current;
@@ -437,6 +489,7 @@ export default function App() {
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, fontSize: 12, color: SUB, flexWrap: "wrap" }}>
                 <Gamepad2 size={14} color={ACCENT} /> {def.name} · {lw}×{lh} px{def.hochkant ? " hochkant" : ""} · 60 fps
                 {pads > 0 && <span style={{ color: OK }}>· {pads === 1 ? "1 Gamepad" : `${pads} Gamepads`}</span>}
+                {fernSt?.controller?.length > 0 && <span style={{ color: OK }}>· per LAN gesteuert</span>}
                 {tippt && <span style={{ color: WARN, display: "inline-flex", alignItems: "center", gap: 4 }}><Keyboard size={13} /> Tastatur im Eingabefeld: Enter oder Klick aufs Spiel</span>}
                 <span style={{ flex: 1 }} />
                 <span>Zustand: <b style={{ color: TEXT2 }}>{ZUSTAND[zustand] || zustand}</b></span>
@@ -605,6 +658,27 @@ export default function App() {
             </div>
 
             <div style={{ ...S.section, padding: 16 }}>
+              <div className="sp-section-label">Fernsteuerung (LAN)</div>
+              <Toggle checked={cfg.fern.on} disabled={!isElectron} onChange={(v) => set("fern", { on: v })} label="Controller über das Netzwerk" />
+              <span className="sp-norm-hint">Ein Handy, Tablet oder Laptop an der LED-Matrix öffnet die Controller-Seite im Browser und steuert die App hier, per Touch, Tastatur oder Gamepad. Das App-Fenster braucht dafür keinen Fokus.</span>
+              {cfg.fern.on && <>
+                <label style={{ ...S.field, marginTop: 10 }}><span style={S.fieldLabel}>Port</span>
+                  <input style={S.inputSm} type="number" min={1} max={65535} value={cfg.fern.port} onChange={(e) => set("fern", { port: +e.target.value })} /></label>
+                <div style={{ marginTop: 10, fontSize: 12, display: "grid", gap: 6 }}>
+                  <Zeile ok={fernSt?.on && !fernSt?.err} text={fernSt?.err ? `Fernsteuerung: ${fernSt.err}` : !fernSt?.on ? "Fernsteuerung: startet …" : fernSt.controller?.length ? `${fernSt.controller.length === 1 ? "1 Controller" : `${fernSt.controller.length} Controller`} verbunden` : "Wartet auf einen Controller"} />
+                  {fernSt?.controller?.map((c) => <div key={c.id} style={{ color: SUB, paddingLeft: 13 }}>{c.name || "Controller"} · {c.ip}{c.spieler?.length ? ` · Spieler ${c.spieler.join(" und ")}` : ""}</div>)}
+                </div>
+                {fernSt?.on && fernSt.adressen?.length > 0 && <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginTop: 10 }}>
+                  <QrBild text={fernSt.adressen[0]} />
+                  <span className="sp-norm-hint" style={{ userSelect: "text", lineHeight: 1.6, marginTop: 0 }}>
+                    Am Gerät an der Matrix öffnen: <code>{fernSt.adressen[0]}</code>{fernSt.adressen.length > 1 ? ` (oder ${fernSt.adressen.slice(1).join(", ")})` : ""}. Beide Geräte müssen im selben Netz sein.
+                    Für Stream Deck oder Skripte: <code>/knopf/a</code>, <code>/knopf/start?spieler=2</code>, <code>/knopf/rechts/an</code> und <code>/aus</code>.
+                  </span>
+                </div>}
+              </>}
+            </div>
+
+            <div style={{ ...S.section, padding: 16 }}>
               <div className="sp-section-label">App-Einstellungen</div>
               <Toggle checked={cfg.menue} onChange={(v) => set("menue", v)} label="Spielmenü auf der Matrix" />
               <span className="sp-norm-hint">Der Start aus der Demo öffnet erst ein Menü auf der Matrix: ↑/↓ wählt das Spiel, bei Pong ←/→ 1P oder 2P, Enter oder A startet. So lässt sich am Gamepad zwischen den Spielen wechseln.</span>
@@ -695,6 +769,14 @@ function RekordReset({ aus, onReset }) {
   return <button style={{ ...S.smallBtn, ...(frage ? { background: ERR, color: "#fff", borderColor: ERR } : {}), opacity: aus ? 0.5 : 1 }} disabled={aus}
     onClick={(e) => { e.currentTarget.blur(); if (frage) { setFrage(false); onReset(); } else setFrage(true); }}
     title="Highscore zurücksetzen"><RotateCcw size={11} /> {frage ? "Sicher?" : "Zurücksetzen"}</button>;
+}
+
+// QR-Code mit der Adresse der Controller-Seite, zum Abscannen mit dem Handy
+function QrBild({ text }) {
+  const src = React.useMemo(() => {
+    try { const q = qrcode(0, "M"); q.addData(text); q.make(); return q.createDataURL(4, 2); } catch { return ""; }
+  }, [text]);
+  return src ? <img src={src} alt="" width={116} height={116} style={{ flexShrink: 0, borderRadius: 6, imageRendering: "pixelated", background: "#fff" }} /> : null;
 }
 
 const Zeile = ({ ok, text }) => (
