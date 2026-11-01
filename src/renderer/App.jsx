@@ -17,11 +17,11 @@ const LS = "matrixgames_einstellungen";
 // menue: Spielmenü auf der Matrix; leerlauf: Sekunden ohne Eingabe bis zur Demo (0 = nie);
 // comStaerke: Pong-Computer in %; tetrisSchatten: Helligkeit des Tetris-Schattens in % der Steinfarbe; vorhersage: Verzögerung der Ausgabe in ms (Snake); rekorde: Highscore je Spiel; aus: abgewählte Spiele (ids);
 // drehung: in welche Richtung die Wand für Hochkant-Spiele gedreht wird; sensor: HTTP-Endpoint für einen Drehsensor
-const STANDARD = { spiel: "snake", aus: [], ton: true, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, tetrisSchatten: 12, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games", pixel: 10 }, haelften: [{ dreh: 0, spiegeln: false }, { dreh: 0, spiegeln: false }] };
+const STANDARD = { spiel: "snake", aus: [], ton: true, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, tetrisSchatten: 12, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, artnet: { on: false, iface: "", ziel: "", u1: 0, u2: 4, fpu: 144 }, ndi: { on: false, name: "Matrix Games", pixel: 10, iface: "" }, haelften: [{ dreh: 0, spiegeln: false }, { dreh: 0, spiegeln: false }] };
 const laden = () => {
   try {
     const v = JSON.parse(localStorage.getItem(LS) || "null");
-    return v ? { ...STANDARD, ...v, aus: Array.isArray(v.aus) ? v.aus : [], rekorde: { ...v.rekorde }, sensor: { ...STANDARD.sensor, ...v.sensor }, sacn: { ...STANDARD.sacn, ...v.sacn }, ndi: { ...STANDARD.ndi, ...v.ndi },
+    return v ? { ...STANDARD, ...v, aus: Array.isArray(v.aus) ? v.aus : [], rekorde: { ...v.rekorde }, sensor: { ...STANDARD.sensor, ...v.sensor }, sacn: { ...STANDARD.sacn, ...v.sacn }, artnet: { ...STANDARD.artnet, ...v.artnet }, ndi: { ...STANDARD.ndi, ...v.ndi },
       haelften: STANDARD.haelften.map((h, i) => ({ ...h, ...(Array.isArray(v.haelften) ? v.haelften[i] : null) })) } : STANDARD;
   } catch { return STANDARD; }
 };
@@ -122,7 +122,7 @@ export default function App() {
   fensterOffen.current = changelog;
   const canvasRef = useRef(null), matrixRef = useRef(null);
   const gameRef = useRef(null), tonRef = useRef(null), held = useRef(new Set()), zustandRef = useRef("demo");
-  const ausgabeAn = (cfg.sacn.on || cfg.ndi.on) && isElectron;
+  const ausgabeAn = (cfg.sacn.on || cfg.artnet.on || cfg.ndi.on) && isElectron;
   const ausgabeRef = useRef(ausgabeAn), schwarzRef = useRef(cfg.schwarz), spielRef = useRef(cfg.spiel), koennenRef = useRef(cfg.koennen), vorhersageRef = useRef(cfg.vorhersage);
   const cfgRef = useRef(cfg), menueRef = useRef(null), startNachWechsel = useRef(null);
   const [sensorSt, setSensorSt] = useState(null);
@@ -178,10 +178,10 @@ export default function App() {
   const ladeIfaces = () => api.netzwerkkarten().then((l) => setInterfaces(l || []));
   useEffect(() => { ladeIfaces(); }, []);
 
-  // Ausgabe im Hauptprozess (sACN/NDI) an die Einstellungen anpassen
+  // Ausgabe im Hauptprozess (sACN/Art-Net/NDI) an die Einstellungen anpassen
   useEffect(() => {
-    if (isElectron) api.ausgabe({ sacn: cfg.sacn, ndi: cfg.ndi, haelften: cfg.haelften }).then(setStatus);
-  }, [JSON.stringify(cfg.sacn), JSON.stringify(cfg.ndi), JSON.stringify(cfg.haelften)]);
+    if (isElectron) api.ausgabe({ sacn: cfg.sacn, artnet: cfg.artnet, ndi: cfg.ndi, haelften: cfg.haelften }).then(setStatus);
+  }, [JSON.stringify(cfg.sacn), JSON.stringify(cfg.artnet), JSON.stringify(cfg.ndi), JSON.stringify(cfg.haelften)]);
   useEffect(() => api.onStatus(setStatus), []);
 
   // Drehsensor: Endpoint im Hauptprozess ein- und ausschalten; die Antwort nennt auch, was das Spiel braucht
@@ -367,9 +367,11 @@ export default function App() {
     setPdfStatus(r?.ok ? (r.datei ? `Gespeichert: ${r.datei}` : "") : r?.abgebrochen ? "" : `PDF nicht möglich${r?.fehler ? `: ${r.fehler}` : "."}`);
     zumSpiel();
   };
-  const sacnSt = status?.sacn, ndiSt = status?.ndi;
-  const uni = (start) => `${start}–${+start + anzahlUniverses(cfg.sacn.fpu) - 1}`;
-  const sendet = ausgabeAn && ((cfg.sacn.on && sacnSt?.on && !sacnSt?.err) || (cfg.ndi.on && ndiSt?.on && !ndiSt?.err));
+  const sacnSt = status?.sacn, artSt = status?.artnet, ndiSt = status?.ndi;
+  const uni = (start, fpu = cfg.sacn.fpu) => `${start}–${+start + anzahlUniverses(fpu) - 1}`;
+  const uniArt = (start) => uni(start, cfg.artnet.fpu);
+  const sendet = ausgabeAn && ((cfg.sacn.on && sacnSt?.on && !sacnSt?.err) || (cfg.artnet.on && artSt?.on && !artSt?.err) || (cfg.ndi.on && ndiSt?.on && !ndiSt?.err));
+  const karteText = (adr) => { const k = interfaces.find((i) => i.address === adr); return k ? `${k.name} (${k.address})` : adr; };
   const zumSpiel = () => document.activeElement?.blur?.();
   const imSpiel = !["demo", "menue", "title", "game_over"].includes(zustand);
   const pauseUmschalten = () => { gameRef.current?.pausieren?.(); zumSpiel(); };
@@ -396,7 +398,7 @@ export default function App() {
           <Dot color={sendet ? (cfg.schwarz ? WARN : OK) : LINE} /> {sendet ? (cfg.schwarz ? "sendet schwarz" : "sendet") : "keine Ausgabe"}
         </span>}
         <button style={cfg.schwarz ? { ...S.ghostBtn, background: WARN, color: "#fff", borderColor: WARN } : S.ghostBtn} onClick={() => set("schwarz", !cfg.schwarz)}
-          title={cfg.schwarz ? "Bild wieder auf die Matrix geben" : "Matrix dunkel schalten: sACN und NDI senden Schwarz, das Spiel läuft weiter"}>
+          title={cfg.schwarz ? "Bild wieder auf die Matrix geben" : "Matrix dunkel schalten: sACN, Art-Net und NDI senden Schwarz, das Spiel läuft weiter"}>
           <Power size={14} /> {cfg.schwarz ? "Matrix aus" : "Matrix an"}</button>
         <button style={S.ghostBtn} onClick={() => set("ton", !cfg.ton)} title={cfg.ton ? "Ton aus" : "Ton an"}>{cfg.ton ? <Volume2 size={14} /> : <VolumeX size={14} />} Ton</button>
         <button style={{ ...S.ghostBtn, ...(zustand === "paused" ? { background: WARN, color: "#fff", borderColor: WARN } : {}), opacity: imSpiel ? 1 : 0.5, cursor: imSpiel ? "pointer" : "default" }} disabled={!imSpiel} onClick={pauseUmschalten}
@@ -502,19 +504,11 @@ export default function App() {
           <div>
             <div style={{ ...S.section, padding: 16 }}>
               <div className="sp-section-label">Ausgabe an die LED-Matrix</div>
-              {!isElectron && <div style={{ color: WARN, fontSize: 12, marginBottom: 10, display: "flex", gap: 6 }}><TriangleAlert size={14} style={{ flexShrink: 0 }} /> sACN und NDI gibt es nur in der Desktop-App. Spielen geht auch hier.</div>}
+              {!isElectron && <div style={{ color: WARN, fontSize: 12, marginBottom: 10, display: "flex", gap: 6 }}><TriangleAlert size={14} style={{ flexShrink: 0 }} /> sACN, Art-Net und NDI gibt es nur in der Desktop-App. Spielen geht auch hier.</div>}
 
               <Toggle checked={cfg.sacn.on} disabled={!isElectron} onChange={(v) => set("sacn", { on: v })} label="sACN (E1.31) senden" />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, margin: "10px 0 14px" }}>
-                <label style={{ ...S.field, gridColumn: "1 / -1" }}><span style={S.fieldLabel}>Netzwerkkarte</span>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <select style={S.selectSm} value={cfg.sacn.iface} onChange={(e) => set("sacn", { iface: e.target.value })}>
-                      <option value="">wie das System</option>
-                      {interfaces.map((i) => <option key={i.name + i.address} value={i.address}>{i.name} · {i.address}/{i.prefix}</option>)}
-                    </select>
-                    <button style={S.smallBtn} onClick={ladeIfaces} title="Liste neu laden"><RefreshCw size={12} /></button>
-                  </div>
-                </label>
+                <KarteWahl value={cfg.sacn.iface} interfaces={interfaces} onReload={ladeIfaces} onChange={(iface) => set("sacn", { iface })} style={{ gridColumn: "1 / -1" }} />
                 <label style={S.field}><span style={S.fieldLabel}>Matrix 1 ab Universe</span>
                   <input style={S.inputSm} type="number" min={1} max={63999} value={cfg.sacn.u1} onChange={(e) => set("sacn", { u1: +e.target.value })} /></label>
                 <label style={S.field}><span style={S.fieldLabel}>Matrix 2 ab Universe</span>
@@ -524,7 +518,24 @@ export default function App() {
                   <span className="sp-norm-hint">144 = 9 Kacheln à 4×4 Pixel (432 Kanäle). Je Matrix {anzahlUniverses(cfg.sacn.fpu)} Universes.</span></label>
               </div>
 
+              <Toggle checked={cfg.artnet.on} disabled={!isElectron} onChange={(v) => set("artnet", { on: v })} label="Art-Net senden" />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, margin: "10px 0 14px" }}>
+                <KarteWahl value={cfg.artnet.iface} interfaces={interfaces} onReload={ladeIfaces} onChange={(iface) => set("artnet", { iface })} style={{ gridColumn: "1 / -1" }} />
+                <label style={{ ...S.field, gridColumn: "1 / -1" }}><span style={S.fieldLabel}>Ziel-IP (leer = Broadcast)</span>
+                  <TextFeld value={cfg.artnet.ziel} placeholder={cfg.artnet.iface ? "Broadcast ins Netz der Karte" : "255.255.255.255"} onChange={(ziel) => set("artnet", { ziel })} />
+                  <span className="sp-norm-hint">Mehrere Ziele mit Komma trennen. Leer: Broadcast ins Netz der gewählten Karte (z. B. 2.255.255.255).</span></label>
+                <label style={S.field}><span style={S.fieldLabel}>Matrix 1 ab Universe</span>
+                  <input style={S.inputSm} type="number" min={0} max={32767} value={cfg.artnet.u1} onChange={(e) => set("artnet", { u1: +e.target.value })} /></label>
+                <label style={S.field}><span style={S.fieldLabel}>Matrix 2 ab Universe</span>
+                  <input style={S.inputSm} type="number" min={0} max={32767} value={cfg.artnet.u2} onChange={(e) => set("artnet", { u2: +e.target.value })} /></label>
+                <label style={{ ...S.field, gridColumn: "1 / -1" }}><span style={S.fieldLabel}>Pixel (RGB) je Universe</span>
+                  <input style={S.inputSm} type="number" min={1} max={170} value={cfg.artnet.fpu} onChange={(e) => set("artnet", { fpu: +e.target.value })} />
+                  <span className="sp-norm-hint">Art-Net zählt ab Universe 0 (Net · Sub-Net · Universe als eine Zahl, 0–32767). Je Matrix {anzahlUniverses(cfg.artnet.fpu)} Universes.</span></label>
+              </div>
+
               <Toggle checked={cfg.ndi.on} disabled={!isElectron} onChange={(v) => set("ndi", { on: v })} label="NDI-Stream senden" />
+              <KarteWahl value={cfg.ndi.iface} interfaces={interfaces} onReload={ladeIfaces} onChange={(iface) => set("ndi", { iface })} style={{ marginTop: 10 }}
+                hint="NDI nutzt nur diese Karte (wie „Adapters“ im NDI Access Manager). Ein Wechsel startet den Stream neu." />
               <label style={{ ...S.field, margin: "10px 0 4px" }}><span style={S.fieldLabel}>Name des NDI-Streams</span>
                 <NdiName value={cfg.ndi.name} onChange={(name) => set("ndi", { name })} /></label>
               <label style={{ ...S.field, marginTop: 10 }}><span style={S.fieldLabel}>Größe der Pixel im NDI-Bild</span>
@@ -538,8 +549,9 @@ export default function App() {
               {ausgabeAn && (
                 <div style={{ marginTop: 14, borderTop: `1px solid ${LINE}`, paddingTop: 12, fontSize: 12, display: "grid", gap: 6 }}>
                   <div style={{ color: SUB }}>Bilder je Sekunde: <b style={{ color: TEXT2 }}>{status?.fps ?? 0}</b></div>
-                  {cfg.sacn.on && <Zeile ok={sacnSt?.on && !sacnSt?.err} text={sacnSt?.err ? `sACN: ${sacnSt.err}` : `sACN: Universes ${uni(cfg.sacn.u1)} und ${uni(cfg.sacn.u2)}, ${sacnSt?.pakete ?? 0} Pakete`} />}
-                  {cfg.ndi.on && <Zeile ok={ndiSt?.on && !ndiSt?.err} text={ndiSt?.err ? `NDI: ${ndiSt.err}` : ndiSt?.on ? `NDI: „${ndiSt.name}“, ${ndiSt.verbindungen} Empfänger verbunden` : "NDI: startet …"} />}
+                  {cfg.sacn.on && <Zeile ok={sacnSt?.on && !sacnSt?.err} text={sacnSt?.err ? `sACN: ${sacnSt.err}` : `sACN: Universes ${uni(cfg.sacn.u1)} und ${uni(cfg.sacn.u2)}, ${sacnSt?.pakete ?? 0} Pakete${cfg.sacn.iface ? ` über ${karteText(cfg.sacn.iface)}` : ""}`} />}
+                  {cfg.artnet.on && <Zeile ok={artSt?.on && !artSt?.err} text={artSt?.err ? `Art-Net: ${artSt.err}` : `Art-Net: Universes ${uniArt(cfg.artnet.u1)} und ${uniArt(cfg.artnet.u2)} an ${(artSt?.ziele || []).join(", ") || "…"}, ${artSt?.pakete ?? 0} Pakete${artSt?.karte ? ` über ${artSt.karte}` : ""}`} />}
+                  {cfg.ndi.on && <Zeile ok={ndiSt?.on && !ndiSt?.err} text={ndiSt?.err ? `NDI: ${ndiSt.err}` : ndiSt?.on ? `NDI: „${ndiSt.name}“, ${ndiSt.verbindungen} Empfänger verbunden${ndiSt.karte ? ` über ${karteText(ndiSt.karte)}` : ""}` : "NDI: startet …"} />}
                 </div>
               )}
             </div>
@@ -582,7 +594,7 @@ export default function App() {
                   </div>
                 ))}
                 <span className="sp-norm-hint">
-                  Für Matrizen, die gedreht oder gespiegelt verbaut sind: das Bild jeder Hälfte wird im Uhrzeigersinn gedreht und vorher gespiegelt, bevor es per sACN und NDI hinausgeht. 180° und Spiegeln zusammen spiegeln senkrecht. Mit dem Testbild ausrichten: Nummer und Pfeil stehen aufrecht, die rote Ecke ist oben links.
+                  Für Matrizen, die gedreht oder gespiegelt verbaut sind: das Bild jeder Hälfte wird im Uhrzeigersinn gedreht und vorher gespiegelt, bevor es per sACN, Art-Net und NDI hinausgeht. 180° und Spiegeln zusammen spiegeln senkrecht. Mit dem Testbild ausrichten: Nummer und Pfeil stehen aufrecht, die rote Ecke ist oben links.
                 </span>
                 {haelftenGedreht && <button style={{ ...S.smallBtn, marginTop: 8 }} onClick={() => setCfg((c) => ({ ...c, haelften: STANDARD.haelften }))}><RotateCcw size={12} /> Zurücksetzen</button>}
               </div>
@@ -656,12 +668,12 @@ export default function App() {
               </div> : <div style={{ textAlign: "center", fontSize: 11, color: MUTED, marginTop: 6 }}>
                 Hochkant {wandLage === "links" ? "nach links" : "nach rechts"} gedreht: oben Matrix {wandLage === "links" ? 2 : 1}, unten Matrix {wandLage === "links" ? 1 : 2}
               </div>}
-              <Hint>So sieht das Bild auf den Matrizen aus: genau dieser Stand geht per sACN und NDI hinaus.{haelftenGedreht ? ` Gedreht oder gespiegelt wird erst für die Ausgabe (${cfg.haelften.map((h, i) => `Matrix ${i + 1}: ${h.dreh}°${h.spiegeln ? ", gespiegelt" : ""}`).join("; ")}).` : ""}{cfg.schwarz ? " Gerade dunkel geschaltet." : ""}</Hint>
+              <Hint>So sieht das Bild auf den Matrizen aus: genau dieser Stand geht per sACN, Art-Net und NDI hinaus.{haelftenGedreht ? ` Gedreht oder gespiegelt wird erst für die Ausgabe (${cfg.haelften.map((h, i) => `Matrix ${i + 1}: ${h.dreh}°${h.spiegeln ? ", gespiegelt" : ""}`).join("; ")}).` : ""}{cfg.schwarz ? " Gerade dunkel geschaltet." : ""}</Hint>
             </div>
           </div>
         </div>
         <p style={{ ...S.hint, color: MUTED }}>
-          sACN und NDI laufen weiter, wenn du das Spiel wechselst, und auch bei minimiertem Fenster.
+          sACN, Art-Net und NDI laufen weiter, wenn du das Spiel wechselst, und auch bei minimiertem Fenster.
         </p>
       </main></div>
       {changelog && <Modal title={`Matrix Games ${version}`} onClose={() => setChangelog(false)}>
@@ -681,6 +693,30 @@ export default function App() {
 }
 
 // Der NDI-Name gilt erst beim Verlassen des Felds (oder Enter): sonst entstünde je Buchstabe ein neuer Stream
+// Netzwerkkarte für eine Ausgabe; jede Ausgabe hat ihre eigene Wahl
+function KarteWahl({ value, interfaces, onChange, onReload, style, hint }) {
+  const fehlt = value && !interfaces.some((i) => i.address === value);
+  return <label style={{ ...S.field, ...style }}><span style={S.fieldLabel}>Netzwerkkarte</span>
+    <div style={{ display: "flex", gap: 6 }}>
+      <select style={S.selectSm} value={value || ""} onChange={(e) => onChange(e.target.value)}>
+        <option value="">wie das System</option>
+        {interfaces.map((i) => <option key={i.name + i.address} value={i.address}>{i.name} · {i.address}/{i.prefix}</option>)}
+        {fehlt && <option value={value}>{value} (nicht verbunden)</option>}
+      </select>
+      <button style={S.smallBtn} onClick={onReload} title="Liste neu laden"><RefreshCw size={12} /></button>
+    </div>
+    {hint && <span className="sp-norm-hint">{hint}</span>}
+  </label>;
+}
+
+// Textfeld, das erst beim Verlassen übernimmt (sonst baut jede Taste die Ausgabe neu auf)
+function TextFeld({ value, onChange, placeholder }) {
+  const [v, setV] = useState(value || "");
+  useEffect(() => setV(value || ""), [value]);
+  const fertig = () => { const n = v.trim(); setV(n); if (n !== (value || "")) onChange(n); };
+  return <input style={S.inputSm} value={v} placeholder={placeholder} onChange={(e) => setV(e.target.value)} onBlur={fertig} onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />;
+}
+
 function NdiName({ value, onChange }) {
   const [v, setV] = useState(value);
   useEffect(() => setV(value), [value]);

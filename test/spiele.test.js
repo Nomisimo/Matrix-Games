@@ -765,3 +765,68 @@ test("Tetris zeichnet direkt auf ein Hochkant-Bild, wenn die App eins gibt", () 
   g.render(quer);
   for (let y = 0; y < HH; y++) for (let x = 0; x < HW; x++) assert.deepEqual(quer.get(y, HW - 1 - x), hoch.get(x, y));
 });
+
+/* ── Art-Net und Netzwerkkarte je Ausgabe ───────────────────────────────── */
+test("Art-Net: ArtDmx-Paket mit Port-Adresse, Sequenz und gerader Länge", () => {
+  const p = ausgabe.artnetPaket(0x1234, Uint8Array.from([1, 2, 3]), 7);
+  assert.equal(p.toString("latin1", 0, 8), "Art-Net\0");
+  assert.equal(p.readUInt16LE(8), 0x5000);
+  assert.equal(p.readUInt16BE(10), 14);
+  assert.equal(p[12], 7);
+  assert.equal(p[14], 0x34);
+  assert.equal(p[15], 0x12);
+  assert.equal(p.readUInt16BE(16), 4);
+  assert.deepEqual([...p.subarray(18)], [1, 2, 3, 0]);
+  assert.equal(ausgabe.artnetPaket(0, new Uint8Array(432), 1).length, 18 + 432);
+});
+
+test("Art-Net: Broadcast ins Netz der Karte, Ziel-IPs als Liste", () => {
+  assert.equal(ausgabe.broadcastVon("2.0.0.10", "255.0.0.0"), "2.255.255.255");
+  assert.equal(ausgabe.broadcastVon("192.168.1.20", "255.255.255.0"), "192.168.1.255");
+  assert.equal(ausgabe.broadcastVon("x", "255.0.0.0"), "255.255.255.255");
+  assert.deepEqual(ausgabe.zielListe("10.0.0.5, 10.0.0.6; quatsch 300.1.1.1"), ["10.0.0.5", "10.0.0.6"]);
+});
+
+test("Art-Net-Sender: eigene Karte, Broadcast in deren Netz, fehlende Karte meldet einen Fehler", async () => {
+  const karte = { name: "lo", address: "127.0.0.1", netmask: "255.0.0.0" };
+  const s = ausgabe.artnetSender({ iface: "127.0.0.1", karten: () => [karte], intervall: 50 });
+  assert.equal(s.st.err, "");
+  assert.deepEqual(s.st.ziele, ["127.255.255.255"]);
+  assert.equal(s.st.karte, "lo (127.0.0.1)");
+  s.stop();
+  const f = ausgabe.artnetSender({ iface: "10.9.9.9", karten: () => [karte], intervall: 50 });
+  assert.match(f.st.err, /10\.9\.9\.9 ist nicht verbunden/);
+  f.stop();
+  // Unicast an 127.0.0.1: Pakete kommen an
+  const dgram = await import("dgram");
+  const rx = dgram.createSocket("udp4");
+  await new Promise((r) => rx.bind(0, "127.0.0.1", r));
+  const port = rx.address().port;
+  const angekommen = new Promise((r) => rx.once("message", (m) => r(m)));
+  const u = ausgabe.artnetSender({ iface: "127.0.0.1", ziel: "127.0.0.1", karten: () => [karte] });
+  // Port 6454 ist fest; zum Test das Ziel auf den Empfänger umbiegen
+  const orig = dgram.Socket.prototype.send;
+  dgram.Socket.prototype.send = function (buf, p, ip, cb) { return orig.call(this, buf, port, ip, cb); };
+  try {
+    await new Promise((r) => setTimeout(r, 30));
+    u.send(new Uint8Array(48 * 24 * 3).fill(9));
+    const m = await angekommen;
+    assert.equal(m.toString("latin1", 0, 8), "Art-Net\0");
+    assert.deepEqual(u.st.universes, [0, 1, 2, 3, 4, 5, 6, 7]);
+  } finally { dgram.Socket.prototype.send = orig; u.stop(); rx.close(); }
+});
+
+test("Ausgabe: sACN, Art-Net und NDI nutzen getrennte Netzwerkkarten", () => {
+  const a = ausgabe.createAusgabe();
+  const st = a.anwenden({ sacn: { on: false }, artnet: { on: true, iface: "10.250.250.250", u1: 0, u2: 4 }, ndi: { on: false, iface: "10.1.1.1" } });
+  assert.equal(st.artnet.on, true);
+  assert.match(st.artnet.err, /10\.250\.250\.250/);
+  a.stopAll();
+});
+
+test("NDI: gewählte Karte als adapters.allowed, übrige Einstellungen bleiben", () => {
+  const k = ausgabe.ndiKonfig("10.0.0.7", null, { ndi: { machinename: "Regie", adapters: { allowed: ["1.2.3.4"] }, networks: { ips: "" } } });
+  assert.deepEqual(k.ndi.adapters.allowed, ["10.0.0.7"]);
+  assert.equal(k.ndi.machinename, "Regie");
+  assert.deepEqual(k.ndi.networks, { ips: "" });
+});
