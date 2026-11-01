@@ -1,10 +1,11 @@
-// Ausgabe der Spiele an die LED-Matrizen: sACN (E1.31) und NDI.
+// Ausgabe der Spiele an die LED-Matrizen: sACN (E1.31), Art-Net und NDI, je über eine eigene Netzwerkkarte.
 // Die Oberfläche rendert das 48×24-Bild und schickt es je Bild per IPC hierher;
 // der Hauptprozess verteilt es ins Netz. Kein Electron-Import, damit die Funktionen
 // im Test unter reinem Node laufen.
 const dgram = require('dgram');
 const crypto = require('crypto');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const W = 48, H = 24, M = 24; // Leinwand und Kantenlänge einer Matrix
@@ -103,6 +104,88 @@ function ndiBild(px, f = 10, out = null, groesse = f) {
   return out;
 }
 
+/* ── Netzwerkkarten ──────────────────────────────────────────────────────
+   Jede Ausgabe (sACN, Art-Net, NDI) kann eine eigene Karte nutzen. Gewählt wird über die
+   IPv4-Adresse der Karte; leer heißt „wie das System“. */
+function ipv4Karten() {
+  const out = [];
+  for (const [name, addrs] of Object.entries(os.networkInterfaces())) {
+    for (const a of addrs || []) if ((a.family === 'IPv4' || a.family === 4) && !a.internal) out.push({ name, address: a.address, netmask: a.netmask });
+  }
+  return out;
+}
+const istIPv4 = (s) => /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(s) && s.split('.').every((n) => +n <= 255);
+const zielListe = (ziel) => String(ziel || '').split(/[\s,;]+/).filter(istIPv4);
+// Broadcast-Adresse des Netzes einer Karte, z. B. 2.0.0.10/255.0.0.0 → 2.255.255.255
+function broadcastVon(address, netmask) {
+  if (!istIPv4(address) || !istIPv4(netmask)) return '255.255.255.255';
+  const m = netmask.split('.');
+  return address.split('.').map((o, i) => (+o | (~+m[i] & 255))).join('.');
+}
+
+/* ── Art-Net: ArtDmx (OpCode 0x5000, Protokoll 14) an UDP-Port 6454 ─────── */
+function artnetPaket(portAdresse, data, seq) {
+  const n = data.length + (data.length & 1); // Länge muss gerade sein
+  const p = Buffer.alloc(18 + n);
+  p.write('Art-Net\0', 0, 'latin1');
+  p.writeUInt16LE(0x5000, 8);
+  p.writeUInt16BE(14, 10);
+  p[12] = seq & 255;              // 1–255, 0 hieße „ohne Reihenfolge“
+  p[13] = 0;                      // Physical
+  p[14] = portAdresse & 255;      // SubUni (Sub-Net + Universe)
+  p[15] = (portAdresse >> 8) & 0x7f; // Net
+  p.writeUInt16BE(n, 16);
+  Buffer.from(data.buffer, data.byteOffset, data.length).copy(p, 18);
+  return p;
+}
+
+/* Art-Net-Sender: ohne Ziel-IP geht Broadcast ins Netz der gewählten Karte (z. B. 2.255.255.255),
+   ohne Karte an 255.255.255.255. Mit Ziel-IP(s) Unicast. Der Socket ist an die Karte gebunden.
+   Fehler halten die Ausgabe nicht an: jede Sekunde wird der Socket bei Bedarf neu aufgebaut. */
+function artnetSender({ iface, ziel, u1 = 0, u2 = 4, fpu = 144, karten = ipv4Karten, intervall = 1000 }) {
+  const ziele = zielListe(ziel);
+  const st = { on: true, err: '', pakete: 0, universes: [], karte: '', ziele: [] };
+  let sock = null, sockErr = '', offen = true, seq = 0, ziel_ = [];
+  const schliessen = () => { if (sock) { try { sock.close(); } catch {} } sock = null; };
+  const aufbauen = () => {
+    if (!offen) return;
+    const da = karten();
+    const karte = iface ? da.find((k) => k.address === iface) : null;
+    if (iface && !karte) { schliessen(); st.err = `Netzwerkkarte ${iface} ist nicht verbunden. Kabel prüfen oder eine andere Karte wählen.`; return; }
+    ziel_ = ziele.length ? ziele : [karte ? broadcastVon(karte.address, karte.netmask) : '255.255.255.255'];
+    st.karte = karte ? `${karte.name} (${karte.address})` : '';
+    st.ziele = ziel_;
+    if (sock && !sockErr) { st.err = ''; return; }
+    schliessen();
+    sockErr = '';
+    const s = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+    s.on('error', (e) => { sockErr = e.message; st.err = e.message; });
+    s.bind(0, karte ? karte.address : undefined, () => { try { s.setBroadcast(true); } catch (e) { sockErr = e.message; } });
+    sock = s;
+    st.err = '';
+  };
+  const send = (px) => {
+    if (!offen || !sock || sockErr) return;
+    seq = (seq % 255) + 1;
+    const list = [];
+    [[0, u1], [M, u2]].forEach(([xo, start]) => {
+      universes(matrixDmx(px, xo), fpu).forEach((chunk, i) => {
+        const u = start + i;
+        if (u < 0 || u > 32767) return;
+        list.push(u);
+        const paket = artnetPaket(u, chunk, seq);
+        for (const ip of ziel_) sock.send(paket, 6454, ip, (e) => { if (e) { sockErr = e.message; st.err = e.message; } else st.pakete++; });
+      });
+    });
+    st.universes = list;
+  };
+  aufbauen();
+  const timer = setInterval(aufbauen, intervall);
+  if (timer.unref) timer.unref();
+  const stop = () => { offen = false; st.on = false; clearInterval(timer); schliessen(); };
+  return { send, stop, st };
+}
+
 /* ── sACN-Sender ────────────────────────────────────────────────────────── */
 function sacnSender({ iface, u1 = 1, u2 = 5, fpu = 144, quelle = 'Netzwerkplaner Spiele' }) {
   const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
@@ -149,9 +232,40 @@ function ndiPfade() {
   return p;
 }
 
-let ndiLib = null; // einmal laden, Funktionen merken
-function ladeNdi() {
-  if (ndiLib) return ndiLib;
+/* NDI-Netzwerkkarte: Die NDI-Runtime liest beim Initialisieren ndi-config.v1.json aus dem Ordner
+   in NDI_CONFIG_DIR. Für eine gewählte Karte schreibt die App eine eigene Datei (die Einstellungen
+   aus NDI Access Manager bleiben erhalten) mit adapters.allowed = [Adresse der Karte]. Wechselt die
+   Karte, wird die Runtime neu initialisiert. */
+function ndiGlobaleKonfig() {
+  const d = process.platform === 'win32' ? path.join(process.env.ProgramData || 'C:\\ProgramData', 'NDI') : path.join(os.homedir(), '.ndi');
+  try { return JSON.parse(fs.readFileSync(path.join(d, 'ndi-config.v1.json'), 'utf8')) || {}; } catch { return {}; }
+}
+function ndiKonfig(iface, ordner, basis = ndiGlobaleKonfig()) {
+  const k = { ...basis, ndi: { ...(basis.ndi || {}) } };
+  k.ndi.adapters = { ...(k.ndi.adapters || {}), allowed: [iface] };
+  if (ordner) {
+    fs.mkdirSync(ordner, { recursive: true });
+    fs.writeFileSync(path.join(ordner, 'ndi-config.v1.json'), JSON.stringify(k, null, 2));
+  }
+  return k;
+}
+const ORIGINAL_NDI_CONFIG_DIR = process.env.NDI_CONFIG_DIR;
+function ndiKarteSetzen(iface, ordner) {
+  if (iface) { ndiKonfig(iface, ordner); process.env.NDI_CONFIG_DIR = ordner; }
+  else if (ORIGINAL_NDI_CONFIG_DIR === undefined) delete process.env.NDI_CONFIG_DIR;
+  else process.env.NDI_CONFIG_DIR = ORIGINAL_NDI_CONFIG_DIR;
+}
+
+let ndiLib = null, ndiLibKarte = null; // einmal laden, Funktionen merken
+function ladeNdi(iface = '', ordner = path.join(os.tmpdir(), 'matrix-games-ndi')) {
+  if (ndiLib && ndiLibKarte === iface) return ndiLib;
+  if (ndiLib) { try { ndiLib.deinit(); } catch {} ndiLib.aktiv = false; }
+  ndiKarteSetzen(iface, ordner);
+  if (ndiLib) {
+    if (!ndiLib.initialize()) throw new Error('NDIlib_initialize fehlgeschlagen');
+    ndiLibKarte = iface; ndiLib.aktiv = true;
+    return ndiLib;
+  }
   let koffi;
   try { koffi = require('koffi'); } catch (e) { throw new Error('NDI-Anbindung (koffi) fehlt: ' + e.message); }
   const datei = ndiPfade().find((f) => { try { return fs.existsSync(f); } catch { return false; } });
@@ -165,19 +279,22 @@ function ladeNdi() {
   ndiLib = {
     koffi, datei, VideoFrame, SendCreate,
     initialize: lib.func('bool NDIlib_initialize()'),
+    deinit: lib.func('void NDIlib_destroy()'),
     create: lib.func('void *NDIlib_send_create(const NDIlib_send_create_t *p)'),
     destroy: lib.func('void NDIlib_send_destroy(void *p)'),
     sendVideo: lib.func('void NDIlib_send_send_video_v2(void *p, const NDIlib_video_frame_v2_t *f)'),
     connections: lib.func('int NDIlib_send_get_no_connections(void *p, uint32_t timeout)'),
   };
   if (!ndiLib.initialize()) { ndiLib = null; throw new Error('NDIlib_initialize fehlgeschlagen (CPU nicht unterstützt?)'); }
+  ndiLibKarte = iface; ndiLib.aktiv = true;
   return ndiLib;
 }
 
 const FOURCC_BGRA = 0x41524742, TIMECODE_SYNTHESIZE = 9223372036854775807n;
 
-function ndiSender({ name = 'Matrix Games', faktor = 10, pixel = faktor }) {
-  const n = ladeNdi();
+function ndiSender({ name = 'Matrix Games', faktor = 10, pixel = faktor, iface = '', ordner }) {
+  if (iface && !ipv4Karten().some((k) => k.address === iface)) throw new Error(`Netzwerkkarte ${iface} ist nicht verbunden. Kabel prüfen oder eine andere Karte wählen.`);
+  const n = ladeNdi(iface, ordner);
   const handle = n.create({ p_ndi_name: name, p_groups: null, clock_video: false, clock_audio: false });
   if (!handle) throw new Error('NDIlib_send_create fehlgeschlagen');
   const ow = W * faktor, oh = H * faktor, size = ow * oh * 4;
@@ -187,7 +304,7 @@ function ndiSender({ name = 'Matrix Games', faktor = 10, pixel = faktor }) {
     xres: ow, yres: oh, FourCC: FOURCC_BGRA, frame_rate_N: 60, frame_rate_D: 1, picture_aspect_ratio: ow / oh,
     frame_format_type: 1, timecode: TIMECODE_SYNTHESIZE, p_data: mem, line_stride_in_bytes: ow * 4, p_metadata: null, timestamp: 0n,
   };
-  const st = { on: true, err: '', name, verbindungen: 0, aufloesung: `${ow}×${oh}`, pixel, bilder: 0, lib: n.datei };
+  const st = { on: true, err: '', name, verbindungen: 0, aufloesung: `${ow}×${oh}`, pixel, bilder: 0, lib: n.datei, karte: iface };
   let offen = true;
   const send = (px) => {
     if (!offen || st.err) return;
@@ -211,19 +328,20 @@ function ndiSender({ name = 'Matrix Games', faktor = 10, pixel = faktor }) {
 }
 
 /* ── Verwaltung & IPC ───────────────────────────────────────────────────── */
-function createAusgabe(onStatus = () => {}, onAktiv = () => {}) {
-  let sacn = null, ndi = null, cfg = {}, ndiFehler = '';
+function createAusgabe(onStatus = () => {}, onAktiv = () => {}, { ndiOrdner } = {}) {
+  let sacn = null, artnet = null, ndi = null, cfg = {}, ndiFehler = '';
   const gedreht = new Uint8Array(W * H * 3);
   let bilder = 0, letzteRate = 0, letzteZeit = Date.now();
 
   const status = () => ({
     fps: letzteRate,
     sacn: sacn ? { ...sacn.st } : { on: false },
+    artnet: artnet ? { ...artnet.st } : { on: false },
     ndi: ndi ? { ...ndi.st } : { on: false, err: ndiFehler },
   });
 
   const anwenden = (neu = {}) => {
-    const s = neu.sacn || {}, n = neu.ndi || {};
+    const s = neu.sacn || {}, a = neu.artnet || {}, n = neu.ndi || {};
     const alt = cfg;
     cfg = neu;
     // sACN neu aufbauen, wenn sich etwas geändert hat
@@ -231,22 +349,28 @@ function createAusgabe(onStatus = () => {}, onAktiv = () => {}) {
       if (sacn) { sacn.stop(); sacn = null; }
       if (s.on) sacn = sacnSender({ iface: s.iface, u1: +s.u1 || 1, u2: +s.u2 || 5, fpu: +s.fpu || 144 });
     }
+    if (JSON.stringify(alt.artnet) !== JSON.stringify(a) || (a.on && !artnet)) {
+      if (artnet) { artnet.stop(); artnet = null; }
+      const zahl = (v, d) => (Number.isFinite(+v) && v !== '' && v != null ? +v : d);
+      if (a.on) artnet = artnetSender({ iface: a.iface, ziel: a.ziel, u1: zahl(a.u1, 0), u2: zahl(a.u2, 4), fpu: +a.fpu || 144 });
+    }
     // NDI nur bei Ein/Aus oder neuem Namen neu aufbauen; die Pixelgröße gilt sofort
     const ohnePixel = ({ pixel, ...r } = {}) => JSON.stringify(r);
     if (ohnePixel(alt.ndi) !== ohnePixel(n) || (n.on && !ndi)) {
       if (ndi) { ndi.stop(); ndi = null; }
       ndiFehler = '';
-      if (n.on) { try { ndi = ndiSender({ name: n.name || 'Matrix Games', pixel: +n.pixel || 10 }); } catch (e) { ndiFehler = e.message; } }
+      if (n.on) { try { ndi = ndiSender({ name: n.name || 'Matrix Games', pixel: +n.pixel || 10, iface: n.iface || '', ordner: ndiOrdner }); } catch (e) { ndiFehler = e.message; } }
     } else if (ndi) ndi.setPixel(+n.pixel || 10);
-    onAktiv(!!(sacn || ndi));
+    onAktiv(!!(sacn || artnet || ndi));
     return status();
   };
 
   const frame = (px) => {
     if (!px || px.length !== W * H * 3) return;
     bilder++;
-    if (sacn || ndi) px = haelftenAusrichten(px, cfg.haelften, gedreht);
+    if (sacn || artnet || ndi) px = haelftenAusrichten(px, cfg.haelften, gedreht);
     if (sacn) sacn.send(px);
+    if (artnet) artnet.send(px);
     if (ndi) ndi.send(px);
   };
 
@@ -255,20 +379,21 @@ function createAusgabe(onStatus = () => {}, onAktiv = () => {}) {
     letzteRate = Math.round((bilder * 1000) / Math.max(1, now - letzteZeit));
     bilder = 0; letzteZeit = now;
     if (ndi) ndi.poll();
-    if (sacn || ndi || cfg.sacn?.on || cfg.ndi?.on) onStatus(status());
+    if (sacn || artnet || ndi || cfg.sacn?.on || cfg.artnet?.on || cfg.ndi?.on) onStatus(status());
   }, 1000);
   if (timer.unref) timer.unref();
 
-  const stopAll = () => { clearInterval(timer); if (sacn) sacn.stop(); if (ndi) ndi.stop(); sacn = ndi = null; };
+  const stopAll = () => { clearInterval(timer); if (sacn) sacn.stop(); if (artnet) artnet.stop(); if (ndi) ndi.stop(); sacn = artnet = ndi = null; };
   return { anwenden, frame, status, stopAll };
 }
 
-function register(ipcMain, getWin) {
+function register(ipcMain, getWin, optionen = {}) {
   const win = () => { const w = getWin(); return w && !w.isDestroyed() ? w : null; };
   const a = createAusgabe(
     (st) => win()?.webContents.send('spiele-status', st),
     // Während der Ausgabe darf Chromium die Seite nicht drosseln, sonst stockt sACN/NDI bei minimiertem Fenster
     (aktiv) => { try { win()?.webContents.setBackgroundThrottling(!aktiv); } catch {} },
+    optionen,
   );
   ipcMain.handle('spiele-ausgabe', (_e, cfg) => a.anwenden(cfg));
   ipcMain.handle('spiele-status', () => a.status());
@@ -276,4 +401,5 @@ function register(ipcMain, getWin) {
   return a;
 }
 
-module.exports = { register, createAusgabe, haelftenAusrichten, matrixDmx, universes, sacnPaket, multicast, ndiBild, sacnSender };
+module.exports = { register, createAusgabe, haelftenAusrichten, matrixDmx, universes, sacnPaket, multicast, ndiBild, sacnSender,
+  artnetPaket, artnetSender, broadcastVon, zielListe, ndiKonfig };

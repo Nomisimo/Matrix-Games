@@ -6,6 +6,11 @@ export const REPO = "Nomisimo/Matrix-Games";
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 
 export const CHANGELOG = {
+  "1.0.0-beta.9": [
+    "Netzwerkkarte je Ausgabe: sACN, Art-Net und NDI wählen jeweils ihre eigene Netzwerkkarte, z. B. sACN ins Lichtnetz und NDI ins Videonetz",
+    "Neue Ausgabe Art-Net (ArtDmx, Port 6454): eigene Universes ab 0, Broadcast ins Netz der gewählten Karte oder Unicast an eine oder mehrere Ziel-IPs",
+    "NDI: die gewählte Karte gilt wie „Adapters“ im NDI Access Manager, ohne dessen übrige Einstellungen zu ändern",
+  ],
   "1.0.0-beta.7": [
     "Matrix drehen: jede der beiden Matrizen einzeln um 0°, 90°, 180° oder 270° drehen und spiegeln, für Hälften, die anders verbaut sind; gilt für sACN und NDI, mit dem Testbild auszurichten",
   ],

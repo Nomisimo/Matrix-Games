@@ -32,7 +32,7 @@ function createWindow() {
 
 ipcMain.handle('app-version', () => app.getVersion());
 
-// IPv4-Netzwerkkarten (ohne Loopback) für die sACN-Ausgabe
+// IPv4-Netzwerkkarten (ohne Loopback) für sACN, Art-Net und NDI
 ipcMain.handle('netzwerkkarten', () => {
   const out = [];
   for (const [name, addrs] of Object.entries(os.networkInterfaces())) {
@@ -165,7 +165,7 @@ ipcMain.handle('app-beenden', () => app.quit());
 ipcMain.handle('install-update', (_e, url) => shell.openExternal(/^https:\/\/github\.com\/Nomisimo\/Matrix-Games\//.test(url || '') ? url : RELEASES_URL));
 
 /* ── Ausgabe an die LED-Matrix (sACN, NDI) ─────────────────────────────── */
-const ausgabe = require('./spiele/ausgabe').register(ipcMain, () => mainWin);
+const ausgabe = require('./spiele/ausgabe').register(ipcMain, () => mainWin, { ndiOrdner: path.join(app.getPath('userData'), 'ndi') });
 // Drehsensor: meldet per HTTP, ob die Wand quer oder hochkant steht
 const drehsensor = require('./spiele/drehsensor').register(ipcMain, () => mainWin);
 app.on('before-quit', () => { ausgabe.stopAll(); drehsensor.stop(); });
