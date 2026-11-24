@@ -5,10 +5,11 @@ import { anleitungHtml, verfuegbareSpiele } from "../shared/anleitung.js";
 import { createMenue } from "../shared/spiele/menue.js";
 import { groesse, drehe, passt, richtungAus, drehHinweis, testbild, QUER, HOCHKANT } from "../shared/spiele/drehen.js";
 import { api, isElectron } from "./api.js";
-import { createTon } from "./spiele/ton.js";
+import { createTon, audioAusgaenge } from "./spiele/ton.js";
+import { soundtrackLaden, soundtrackSpeichern, soundtrackLoeschen } from "./spiele/soundtrack.js";
 import { Toggle, Dot, Card, Table, td, Hint, Modal } from "./ui.jsx";
 import { CHANGELOG, compareVersions, neuesteVersion, istBeta, RELEASES_URL } from "../shared/version.js";
-import { Volume2, VolumeX, RotateCcw, RefreshCw, TriangleAlert, Gamepad2, Sun, Moon, Monitor, Power, Keyboard, ArrowUpCircle, Download, Pause, Play, Trophy, FileDown, RotateCw, Compass, FlipHorizontal2 } from "lucide-react";
+import { Volume2, VolumeX, Speaker, FileAudio, X, RotateCcw, RefreshCw, TriangleAlert, Gamepad2, Sun, Moon, Monitor, Power, Keyboard, ArrowUpCircle, Download, Pause, Play, Trophy, FileDown, RotateCw, Compass, FlipHorizontal2 } from "lucide-react";
 import APP_ICON_SVG from "../../assets/app-icon/icon.svg";
 const APP_ICON = `data:image/svg+xml;utf8,${encodeURIComponent(APP_ICON_SVG)}`;
 
@@ -16,15 +17,20 @@ const LS = "matrixgames_einstellungen";
 // Vorgaben wie im Snake-Original auf der echten Matrix (Universe 29 und 33, 144 Pixel je Universe)
 // menue: Spielmenü auf der Matrix; leerlauf: Sekunden ohne Eingabe bis zur Demo (0 = nie);
 // comStaerke: Pong-Computer in %; tetrisSchatten: Helligkeit des Tetris-Schattens in % der Steinfarbe; vorhersage: Verzögerung der Ausgabe in ms (Snake); rekorde: Highscore je Spiel; aus: abgewählte Spiele (ids);
+// lautEffekte/lautMusik: Lautstärke in % für Effekte und Soundtrack; musikAn: Soundtrack an/aus; soundtrack: Dateiname je Spiel (Datei in IndexedDB);
+// audio: Ausgabegerät für alle Spiel-Töne (id aus enumerateDevices, "" = Systemstandard; name zum Wiederfinden, falls sich die id ändert);
 // drehung: in welche Richtung die Wand für Hochkant-Spiele gedreht wird; sensor: HTTP-Endpoint für einen Drehsensor
-const STANDARD = { spiel: "snake", aus: [], ton: true, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, tetrisSchatten: 12, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games", pixel: 10 }, haelften: [{ dreh: 0, spiegeln: false }, { dreh: 0, spiegeln: false }] };
+const STANDARD = { spiel: "snake", aus: [], ton: true, audio: { id: "", name: "" }, lautEffekte: 100, lautMusik: 70, musikAn: true, musikTempo: true, soundtrack: {}, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, tetrisSchatten: 12, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games", pixel: 10 }, haelften: [{ dreh: 0, spiegeln: false }, { dreh: 0, spiegeln: false }] };
 const laden = () => {
   try {
     const v = JSON.parse(localStorage.getItem(LS) || "null");
-    return v ? { ...STANDARD, ...v, aus: Array.isArray(v.aus) ? v.aus : [], rekorde: { ...v.rekorde }, sensor: { ...STANDARD.sensor, ...v.sensor }, sacn: { ...STANDARD.sacn, ...v.sacn }, ndi: { ...STANDARD.ndi, ...v.ndi },
+    return v ? { ...STANDARD, ...v, aus: Array.isArray(v.aus) ? v.aus : [], rekorde: { ...v.rekorde }, sensor: { ...STANDARD.sensor, ...v.sensor }, audio: { ...STANDARD.audio, ...v.audio }, soundtrack: { ...v.soundtrack }, sacn: { ...STANDARD.sacn, ...v.sacn }, ndi: { ...STANDARD.ndi, ...v.ndi },
       haelften: STANDARD.haelften.map((h, i) => ({ ...h, ...(Array.isArray(v.haelften) ? v.haelften[i] : null) })) } : STANDARD;
   } catch { return STANDARD; }
 };
+
+// Spiele, für die sich eine eigene Soundtrack-Datei wählen lässt
+const SOUNDTRACK_SPIELE = ["tetris"];
 
 const STEP = 1000 / 60;
 const ZUSTAND = { menue: "Spielmenü", demo: "Demo (spielt selbst)", title: "Titelbild", intro: "Weltanzeige", playing: "läuft", paused: "Pause", point_scored: "Punkt", clear: "Ziel erreicht", game_over: "Game Over" };
@@ -192,15 +198,55 @@ export default function App() {
   useEffect(() => api.onDrehsensor(setSensorSt), []);
 
   // Ton
-  useEffect(() => { tonRef.current = createTon(); return () => tonRef.current.close(); }, []);
+  const [ausgaenge, setAusgaenge] = useState([]);
+  const [audioFehler, setAudioFehler] = useState("");
+  useEffect(() => {
+    tonRef.current = createTon({ onGeraetFehler: (id, e) => { console.warn("Audio-Ausgabe", id, e); setAudioFehler("Das gewählte Gerät ließ sich nicht öffnen. Der Ton läuft über den Systemstandard."); } });
+    return () => tonRef.current.close();
+  }, []);
   useEffect(() => { tonRef.current.setAn(cfg.ton); }, [cfg.ton]);
+  useEffect(() => { tonRef.current.setTempoAn(cfg.musikTempo); }, [cfg.musikTempo]);
+  useEffect(() => { tonRef.current.setPegel({ effekte: cfg.lautEffekte, musik: cfg.lautMusik, musikAn: cfg.musikAn }); }, [cfg.lautEffekte, cfg.lautMusik, cfg.musikAn]);
+  // Gespeicherte Soundtrack-Dateien beim Start an den Ton geben
+  const [soundtrackStatus, setSoundtrackStatus] = useState("");
+  useEffect(() => { for (const id of SOUNDTRACK_SPIELE) soundtrackLaden(id).then((v) => v && tonRef.current.setSoundtrack(id, v.daten)); }, []);
+  const soundtrackWaehlen = async (id, datei) => {
+    if (!datei) return;
+    try {
+      const daten = await datei.arrayBuffer();
+      // Prüfen, ob sich die Datei abspielen lässt, bevor sie gespeichert wird
+      await new AudioContext().decodeAudioData(daten.slice(0)).catch(() => { throw new Error("Format wird nicht unterstützt"); });
+      await soundtrackSpeichern(id, datei.name, daten);
+      tonRef.current.setSoundtrack(id, daten);
+      set("soundtrack", { [id]: datei.name });
+      setSoundtrackStatus("");
+    } catch (e) { setSoundtrackStatus(`${datei.name}: ${e.message}`); }
+  };
+  const soundtrackEntfernen = (id) => { soundtrackLoeschen(id); tonRef.current.setSoundtrack(id, null); setCfg((c) => { const st = { ...c.soundtrack }; delete st[id]; return { ...c, soundtrack: st }; }); };
+  // Ausgabegeräte laden und bei An- und Abstecken neu einlesen
+  const ladeAusgaenge = useCallback(() => audioAusgaenge().then(setAusgaenge), []);
+  useEffect(() => {
+    ladeAusgaenge();
+    const md = navigator.mediaDevices;
+    md?.addEventListener?.("devicechange", ladeAusgaenge);
+    return () => md?.removeEventListener?.("devicechange", ladeAusgaenge);
+  }, [ladeAusgaenge]);
+  // Gespeichertes Gerät suchen (erst per id, sonst per Name); fehlt es, läuft der Ton über den Standard,
+  // die Auswahl bleibt aber gespeichert und greift wieder, sobald das Gerät zurück ist.
+  const audioGeraet = cfg.audio.id ? ausgaenge.find((d) => d.id === cfg.audio.id) || (cfg.audio.name && ausgaenge.find((d) => d.name === cfg.audio.name)) || null : null;
+  const audioFehlt = !!cfg.audio.id && ausgaenge.length > 0 && !audioGeraet;
+  useEffect(() => {
+    if (audioGeraet && audioGeraet.id !== cfg.audio.id) set("audio", { id: audioGeraet.id });
+    setAudioFehler("");
+    tonRef.current.setGeraet(audioGeraet?.id || "");
+  }, [audioGeraet?.id]);
 
   // Spiel anlegen (bei Wechsel neu). Kam der Wechsel aus dem Spielmenü, startet die Runde gleich.
   const neu = useCallback(() => {
     tonRef.current?.stopAlle();
     const def = SPIELE.find((s) => s.id === cfg.spiel) || SPIELE[0];
     gameRef.current = def.create({
-      ton: (name) => tonRef.current?.play(def.id, name),
+      ton: (name, wert) => tonRef.current?.play(def.id, name, wert),
       koennen: () => (koennenRef.current ?? 80) / 100,
       leerlauf: () => cfgRef.current.leerlauf,
       vorhersage: () => vorhersageRef.current ?? 0,
@@ -605,6 +651,39 @@ export default function App() {
             </div>
 
             <div style={{ ...S.section, padding: 16 }}>
+              <div className="sp-section-label">Ton</div>
+              <Toggle checked={cfg.ton} onChange={(v) => set("ton", v)} label="Spiel-Töne und Musik" />
+              <label style={{ ...S.field, marginTop: 10 }}><span style={S.fieldLabel}>Audio-Ausgabe</span>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <select style={S.selectSm} value={audioGeraet ? audioGeraet.id : cfg.audio.id ? "__fehlt" : ""}
+                    onChange={(e) => { const d = ausgaenge.find((x) => x.id === e.target.value); set("audio", d ? { id: d.id, name: d.name } : { id: "", name: "" }); }}>
+                    <option value="">wie das System</option>
+                    {audioFehlt && <option value="__fehlt" disabled>{cfg.audio.name || "Gespeichertes Gerät"} (nicht verbunden)</option>}
+                    {ausgaenge.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                  <button style={S.smallBtn} onClick={ladeAusgaenge} title="Liste neu laden"><RefreshCw size={12} /></button>
+                  <button style={S.smallBtn} onClick={(e) => { e.currentTarget.blur(); tonRef.current?.test(); }} title="Prüfton auf dem gewählten Gerät abspielen"><Speaker size={12} /> Test</button>
+                </div>
+                <span className="sp-norm-hint">{audioFehler || (audioFehlt ? "Das gespeicherte Gerät ist nicht verbunden. Bis es wieder da ist, läuft der Ton über den Systemstandard." : "Alle Töne und die Musik der Spiele laufen über dieses Gerät, z. B. eine USB-Soundkarte oder ein Audio-Interface. Die Auswahl wird gespeichert.")}</span></label>
+              <Regler label="Lautstärke Effekte" wert={cfg.lautEffekte} onChange={(v) => set("lautEffekte", v)} />
+              <div style={{ marginTop: 14 }}><Toggle checked={cfg.musikAn} onChange={(v) => set("musikAn", v)} label="Soundtrack (Musik im Spiel)" /></div>
+              <Regler label="Lautstärke Soundtrack" wert={cfg.lautMusik} onChange={(v) => set("lautMusik", v)} aus={!cfg.musikAn} />
+              <div style={{ marginTop: 10, opacity: cfg.musikAn ? 1 : 0.5 }}><Toggle checked={cfg.musikTempo} disabled={!cfg.musikAn} onChange={(v) => set("musikTempo", v)} label="Tetris: Musik wird mit dem Level schneller" /></div>
+              <span className="sp-norm-hint">Je Level 2,5 % schneller, ab Level 12 um 30 %.</span>
+              {SOUNDTRACK_SPIELE.map((id) => {
+                const name = SPIELE.find((sp) => sp.id === id)?.name || id, datei = cfg.soundtrack[id];
+                return <label key={id} style={{ ...S.field, marginTop: 10 }}><span style={S.fieldLabel}>Soundtrack {name}</span>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <span style={{ flex: 1, fontSize: 12, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={datei || ""}>{datei || "eingebauter Soundtrack"}</span>
+                    <label style={{ ...S.smallBtn, cursor: "pointer" }} title="Audiodatei (MP3, WAV, OGG, M4A) wählen"><FileAudio size={12} /> Datei wählen
+                      <input type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac" style={{ display: "none" }} onChange={(e) => { soundtrackWaehlen(id, e.target.files?.[0]); e.target.value = ""; }} /></label>
+                    {datei && <button style={S.smallBtn} onClick={() => soundtrackEntfernen(id)} title="Eigene Datei entfernen, zurück zum eingebauten Soundtrack"><X size={12} /></button>}
+                  </div>
+                  <span className="sp-norm-hint">{soundtrackStatus || "Läuft in Schleife, solange eine Runde läuft; Pause hält ihn an, Game Over stoppt ihn. Die Datei bleibt in der App gespeichert."}</span></label>;
+              })}
+            </div>
+
+            <div style={{ ...S.section, padding: 16 }}>
               <div className="sp-section-label">App-Einstellungen</div>
               <Toggle checked={cfg.menue} onChange={(v) => set("menue", v)} label="Spielmenü auf der Matrix" />
               <span className="sp-norm-hint">Der Start aus der Demo öffnet erst ein Menü auf der Matrix: ↑/↓ wählt das Spiel, bei Pong ←/→ 1P oder 2P, Enter oder A startet. So lässt sich am Gamepad zwischen den Spielen wechseln.</span>
@@ -702,3 +781,12 @@ const Zeile = ({ ok, text }) => (
     <span style={{ marginTop: 3 }}><Dot color={ok ? OK : ERR} size={7} /></span> {text}
   </div>
 );
+
+// Lautstärke-Regler 0–100 % wie die übrigen Regler in den Einstellungen
+function Regler({ label, wert, onChange, aus }) {
+  return <label style={{ ...S.field, marginTop: 10, opacity: aus ? 0.5 : 1 }}><span style={S.fieldLabel}>{label}</span>
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <input type="range" min={0} max={100} step={5} value={wert} disabled={aus} onChange={(e) => onChange(+e.target.value)} style={{ flex: 1, accentColor: ACCENT }} />
+      <b style={{ width: 52, textAlign: "right", color: ACCENT, fontSize: 12 }}>{wert ? `${wert} %` : "stumm"}</b>
+    </div></label>;
+}

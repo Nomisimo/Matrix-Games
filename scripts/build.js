@@ -13,7 +13,7 @@ async function build() {
     bundle: true,
     format: "iife",
     minify: process.argv.includes("--minify"),
-    loader: { ".jsx": "jsx", ".js": "jsx", ".svg": "text" },
+    loader: { ".jsx": "jsx", ".js": "jsx", ".svg": "text", ".mp3": "binary" },
     jsx: "transform",
     define: { "process.env.NODE_ENV": '"production"', __APP_VERSION__: JSON.stringify(pkg.version) },
     write: false,

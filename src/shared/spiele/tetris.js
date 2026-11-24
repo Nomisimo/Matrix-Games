@@ -10,6 +10,8 @@ import { FONT } from "./mario/index.js";
 
 export const BREITE = 10, HOEHE = 22, VERSTECKT = 2;
 export const HW = 24, HH = 48;
+// Tempo des Soundtracks je Level: +2,5 % je Level, höchstens +30 % (ab Level 12)
+export const musikTempo = (level) => 1 + 0.025 * Math.max(0, Math.min(12, level || 0));
 // Linke obere Ecke des sichtbaren Spielfelds (Pixel) und Größe eines Feldes
 const FX = 2, FY = 7, Z = 2;
 
@@ -151,7 +153,7 @@ export class TetrisRunde {
     while (this.feld.length < HOEHE) this.feld.unshift(Array(BREITE).fill(null));
     this.lines += reihen.length;
     const lvl = Math.max(this.startLevel, fdiv(this.lines, 10));
-    if (lvl > this.level) { this.level = lvl; this.ton("level"); }
+    if (lvl > this.level) { this.level = lvl; this.ton("level"); this.ton("_tempo", musikTempo(lvl)); }
     this.clearing = null;
     this.spawn();
   }
@@ -316,7 +318,7 @@ export function createTetris({ ton = () => {}, rekord, drehung = () => "rechts",
   let state = "title", game = null, blink = 0, neuerRekord = false, eigener = 0, ende = 0;
   rekord ||= { get: () => eigener, set: (n) => { eigener = n; } };
   const hoch = new Bild(HW, HH);
-  const neu = () => { game = new TetrisRunde(ton); state = "playing"; ende = 0; };
+  const neu = () => { game = new TetrisRunde(ton); state = "playing"; ende = 0; ton("_tempo", musikTempo(0)); ton("_music"); };
   return {
     id: "tetris",
     hochkant: true,
@@ -329,13 +331,13 @@ export function createTetris({ ton = () => {}, rekord, drehung = () => "rechts",
       else if (state === "game_over" && ende > TOPOUT_ZEIT) {
         // KeyX: A am Gamepad
         if (code === "Space" || code === "Enter" || code === "KeyX") neu();
-        else if (code === "Escape") state = "title";
+        else if (code === "Escape") { state = "title"; ton("_stop"); }
       }
     },
     step(held = new Set()) {
       blink++;
       if (state === "playing" && game.update(held) === "over") {
-        ton("over");
+        ton("_stop"); ton("over");
         neuerRekord = game.score > 0 && game.score > rekord.get();
         if (neuerRekord) rekord.set(game.score);
         state = "game_over";

@@ -765,3 +765,24 @@ test("Tetris zeichnet direkt auf ein Hochkant-Bild, wenn die App eins gibt", () 
   g.render(quer);
   for (let y = 0; y < HH; y++) for (let x = 0; x < HW; x++) assert.deepEqual(quer.get(y, HW - 1 - x), hoch.get(x, y));
 });
+
+import { musikTempo } from "../src/shared/spiele/tetris.js";
+test("Tetris: Soundtrack startet mit der Runde, wird mit dem Level schneller und stoppt bei Game Over", () => {
+  assert.equal(musikTempo(0), 1);
+  assert.ok(musikTempo(5) > musikTempo(4));
+  assert.equal(musikTempo(30), musikTempo(12));
+  const t = [];
+  const g = createTetris({ ton: (n, w) => t.push(w === undefined ? n : `${n}:${w}`) });
+  g.key("Space");
+  assert.deepEqual(t.slice(0, 2), ["_tempo:1", "_music"]);
+  // Level-Aufstieg meldet das neue Tempo
+  const r = g.spiel;
+  r.lines = 9;
+  r.clearing = { reihen: [HOEHE - 1], t: 0 };
+  r.raeumen();
+  assert.ok(t.includes("level") && t.includes(`_tempo:${musikTempo(1)}`));
+  // Game Over: Musik aus vor dem Game-Over-Klang
+  r.tot = true;
+  for (let i = 0; i < 5 && g.state === "playing"; i++) g.step();
+  assert.deepEqual(t.slice(-2), ["_stop", "over"]);
+});

@@ -1,6 +1,10 @@
 // Töne der Spiele: dieselben prozeduralen 8-Bit-Klänge wie in den Python-Originalen
 // (Rechteckwellen, Hüllkurven, Mario-Titelmelodie), hier per Web Audio erzeugt.
-const RATE = 22050;
+import TETRIS_MUSIK from "../../../assets/musik/tetris.mp3";
+
+export const RATE = 22050;
+// Eingebaute Soundtracks (Dateien in assets/musik, beim Build in die App gepackt)
+const EINGEBAUT = { tetris: TETRIS_MUSIK };
 
 const sq = (n, f, duty = 0.5) => Float32Array.from({ length: n }, (_, i) => (((i / RATE) * f) % 1 < duty ? 1 : -1));
 const glide = (n, f0, f1) => {
@@ -89,36 +93,73 @@ function marioSounds() {
   };
 }
 
+// Tetris: eigene 8-Bit-Effekte (keine Originalklänge). Kurz und knackig, damit sie bei schnellem Spiel nicht matschen.
 function tetrisSounds() {
-  const ton = (f, d, v, e = [0.01, 0.05, 0.6, 0.3]) => vol(mul(sq(N(d), f), env(N(d), ...e)), v);
-  const arp = (fs, d, v) => vol(cat(fs.map((f) => mul(sq(N(d), f, 0.25), env(N(d), 0.02, 0.04, 0.75, 0.2)))), v);
+  let seed = 11;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
+  const rauschen = (n, glatt = 0.5) => { const r = Float32Array.from({ length: n }, rnd); for (let i = 1; i < n; i++) r[i] = r[i] * (1 - glatt) + r[i - 1] * glatt; return r; };
+  const plus = (a, b) => { const out = new Float32Array(Math.max(a.length, b.length)); out.set(a); for (let i = 0; i < b.length; i++) out[i] += b[i]; return out; };
+  const ton = (f, d, duty = 0.5, e = [0.01, 0.05, 0.6, 0.3]) => mul(sq(N(d), f, duty), env(N(d), ...e));
+  const arp = (fs, d, duty = 0.25) => cat(fs.map((f) => ton(f, d, duty, [0.02, 0.04, 0.75, 0.2])));
+  const schlag = (f0, f1, d) => plus(mul(glide(N(d), f0, f1), env(N(d), 0.005, 0.05, 0.4, 0.6)), mul(rauschen(N(d * 0.6), 0.7), env(N(d * 0.6), 0.005, 0.05, 0.3, 0.7)).map((v) => v * 0.6));
   return {
-    move: ton(1200, 0.012, 0.06),
-    rotate: ton(880, 0.03, 0.12),
-    lock: vol(mul(glide(N(0.05), 260, 140), env(N(0.05), 0.01, 0.04, 0.5, 0.5)), 0.22),
-    drop: vol(mul(glide(N(0.08), 400, 90), env(N(0.08), 0.01, 0.04, 0.5, 0.5)), 0.26),
-    line: arp([523, 659, 784], 0.06, 0.22),
-    tetris: arp([523, 659, 784, 1047, 784, 1047, 1319], 0.055, 0.24),
-    level: arp([392, 523, 659, 784, 1047], 0.05, 0.2),
-    over: vol(mul(glide(N(0.9), 440, 70), env(N(0.9), 0.02, 0.1, 0.6, 0.35)), 0.26),
+    // Schieben: leises Klicken
+    move: vol(ton(1568, 0.018, 0.125, [0.01, 0.2, 0.4, 0.5]), 0.09),
+    // Drehen: kurzes „Plip“ aufwärts
+    rotate: vol(mul(glide(N(0.045), 740, 1180), env(N(0.045), 0.01, 0.1, 0.6, 0.45)), 0.15),
+    // Ablegen: dumpfer Klack
+    lock: vol(schlag(220, 90, 0.07), 0.3),
+    // Hard Drop: Zischen nach unten, dann Aufprall
+    drop: vol(cat([mul(glide(N(0.05), 1400, 300), env(N(0.05), 0.01, 0.1, 0.5, 0.3)).map((v) => v * 0.45), schlag(180, 60, 0.11)]), 0.32),
+    // Zeile: helles Aufwärts-Arpeggio mit Funkeln
+    line: vol(plus(arp([523, 659, 784, 1047], 0.05), rauschen(N(0.2), 0.1).map((v, i, r) => v * 0.12 * (1 - i / r.length))), 0.22),
+    // Vier Zeilen auf einmal: Fanfare
+    tetris: vol(cat([arp([523, 659, 784, 1047, 1319], 0.05), ton(1568, 0.08, 0.25), new Float32Array(N(0.02)), ton(1568, 0.08, 0.25), ton(2093, 0.28, 0.25, [0.01, 0.08, 0.7, 0.4])]), 0.22),
+    // Level geschafft: Tonleiter in Oktaven
+    level: vol(cat([arp([392, 494, 587, 784], 0.045, 0.5), arp([784, 988, 1175, 1568], 0.045, 0.25)]), 0.18),
+    // Game Over: absteigende Moll-Folge, dann langes Abrutschen
+    over: vol(cat([arp([659, 622, 587, 554], 0.12, 0.5), mul(glide(N(0.8), 523, 65), env(N(0.8), 0.02, 0.1, 0.6, 0.35))]), 0.24),
   };
 }
 
-const KLAENGE = {
+export const KLAENGE = {
   snake: () => ({ eat: beep(880, 55, 0.25, 20), die: chord([130, 98], 480, 0.35, 5) }),
   pong: () => ({ paddle: beep(480, 45, 0.35, 18), wall: beep(260, 30, 0.25, 18), score: beep(110, 450, 0.45, 18) }),
   mario: marioSounds,
   tetris: tetrisSounds,
 };
 
-export function createTon() {
-  let ctx = null, master = null, musik = null, an = true;
+// Ausgabegerät: "" = Systemstandard, sonst die deviceId aus navigator.mediaDevices.enumerateDevices()
+// (kind "audiooutput"). Alle Klänge laufen über einen AudioContext, der per setSinkId auf dieses Gerät geht.
+export async function audioAusgaenge() {
+  try {
+    const md = navigator.mediaDevices;
+    if (!md?.enumerateDevices) return [];
+    return (await md.enumerateDevices())
+      .filter((d) => d.kind === "audiooutput" && d.deviceId && d.deviceId !== "default" && d.deviceId !== "communications")
+      .map((d, i) => ({ id: d.deviceId, name: d.label || `Ausgabe ${i + 1}` }));
+  } catch { return []; }
+}
+
+// Lautstärke 0–100 % auf eine Verstärkung mit hörbar gleichmäßigen Stufen
+const pegel = (p) => { const x = Math.max(0, Math.min(100, +p || 0)) / 100; return x * x; };
+
+export function createTon({ onGeraetFehler } = {}) {
+  let ctx = null, master = null, fx = null, mus = null, musik = null, an = true, geraet = "", gesetzt = "";
+  let lautFx = 100, lautMusik = 100, musikAn = true, tempo = 1, tempoAn = true;
+  // musik: laufender Soundtrack { src, key, start, offset }; gemerkt: Stelle beim Pausieren
+  let gemerkt = null;
   const aktive = new Set();
   const cache = {};
+  const soundtracks = {};        // spiel -> AudioBuffer (eigene Datei oder eingebauter Soundtrack)
+  const rohdaten = {};           // spiel -> ArrayBuffer, wird beim ersten Abspielen dekodiert
+  const quelle = {};             // spiel -> "datei" | "eigen" (Teil des Musik-Schlüssels, damit die Pause-Stelle passt)
+  const eingebaut = (spiel) => { delete soundtracks[spiel]; delete rohdaten[spiel]; quelle[spiel] = "eigen"; if (EINGEBAUT[spiel]) rohdaten[spiel] = EINGEBAUT[spiel].slice().buffer; };
+  for (const sp of Object.keys(EINGEBAUT)) eingebaut(sp);
   const puffer = (spiel, name) => {
     const k = `${spiel}:${name}`;
     if (!cache[k]) {
-      const data = name === "_music" ? smbTheme() : (cache[`${spiel}:*`] ||= KLAENGE[spiel]?.() || {})[name];
+      const data = name === "_music" ? (spiel === "mario" ? smbTheme() : null) : (cache[`${spiel}:*`] ||= KLAENGE[spiel]?.() || {})[name];
       if (!data) return null;
       const b = ctx.createBuffer(1, data.length, RATE);
       b.copyToChannel(data, 0);
@@ -126,32 +167,119 @@ export function createTon() {
     }
     return cache[k];
   };
+  const pegelSetzen = () => {
+    if (!master) return;
+    master.gain.value = an ? 1 : 0;
+    fx.gain.value = pegel(lautFx);
+    mus.gain.value = musikAn ? pegel(lautMusik) : 0;
+  };
+  // Gerät am Kontext setzen; klappt es nicht (Gerät weg, keine Unterstützung), bleibt der Systemstandard
+  const sinkSetzen = () => {
+    if (!ctx || gesetzt === geraet) return;
+    const ziel = geraet;
+    gesetzt = ziel;
+    if (typeof ctx.setSinkId !== "function") { if (ziel) onGeraetFehler?.(ziel, new Error("setSinkId nicht unterstützt")); return; }
+    ctx.setSinkId(ziel).catch((e) => {
+      if (gesetzt !== ziel) return;
+      gesetzt = "";
+      ctx?.setSinkId("").catch(() => {});
+      onGeraetFehler?.(ziel, e);
+    });
+  };
   const ensure = () => {
     if (!ctx) {
-      try { ctx = new AudioContext(); master = ctx.createGain(); master.connect(ctx.destination); master.gain.value = an ? 1 : 0; } catch { return false; }
+      try {
+        ctx = new AudioContext(); master = ctx.createGain(); master.connect(ctx.destination);
+        fx = ctx.createGain(); fx.connect(master); mus = ctx.createGain(); mus.connect(master);
+        gesetzt = ""; pegelSetzen();
+      } catch { return false; }
     }
+    sinkSetzen();
     if (ctx.state === "suspended") ctx.resume().catch(() => {});
     return true;
   };
-  const stopMusik = () => { if (musik) { try { musik.stop(); } catch {} musik = null; } };
-  const stopAlle = () => { stopMusik(); for (const s of aktive) { try { s.stop(); } catch {} } aktive.clear(); };
-  const play = (spiel, name) => {
-    if (name === "_stop") return stopAlle();
+  // Stelle im Stück (s); das Tempo zählt mit
+  const musikStelle = () => (musik.offset + (ctx.currentTime - musik.start) * musik.rate) % musik.src.buffer.duration;
+  const tempoSetzen = () => {
+    if (!musik) return;
+    const rate = tempoAn ? tempo : 1;
+    if (rate === musik.rate) return;
+    musik.offset = musikStelle(); musik.start = ctx.currentTime; musik.rate = rate;
+    musik.src.playbackRate.setValueAtTime(rate, ctx.currentTime);
+  };
+  const stopMusik = (merken = false) => {
+    if (!musik) return;
+    gemerkt = merken ? { key: musik.key, offset: musikStelle() } : null;
+    try { musik.src.stop(); } catch {}
+    musik = null;
+  };
+  const stopAlle = (merken = false) => { stopMusik(merken); for (const s of aktive) { try { s.stop(); } catch {} } aktive.clear(); };
+  // Soundtrack-Datei dekodieren (einmal je Spiel); bis dahin läuft die eingebaute Musik bzw. nichts
+  const dekodiere = async (spiel) => {
+    const roh = rohdaten[spiel];
+    if (!roh || !ensure()) return null;
+    delete rohdaten[spiel];
+    try { soundtracks[spiel] = await ctx.decodeAudioData(roh.slice(0)); } catch (e) { console.warn("Soundtrack", spiel, e); soundtracks[spiel] = null; }
+    return soundtracks[spiel];
+  };
+  const starteMusik = (spiel, b, key) => {
+    const offset = gemerkt?.key === key ? gemerkt.offset : 0;
+    gemerkt = null;
+    stopMusik();
+    const src = ctx.createBufferSource();
+    const rate = tempoAn ? tempo : 1;
+    src.buffer = b; src.loop = true; src.playbackRate.value = rate; src.connect(mus);
+    musik = { src, key, start: ctx.currentTime, offset, rate };
+    src.start(0, offset);
+  };
+  let musikWunsch = null;        // das Spiel, dessen Musik laufen soll (für Dateien, die noch dekodiert werden)
+  const play = (spiel, name, wert) => {
+    if (name === "_stop") { musikWunsch = null; gemerkt = null; tempo = 1; return stopAlle(); }
+    if (name === "_tempo") { tempo = wert || 1; return tempoSetzen(); }
+    if (name === "_pause") { musikWunsch = null; return stopAlle(true); }
     if (!ensure()) return;
     if (name === "death") stopAlle();                 // wie pygame.mixer.stop()
+    if (name === "_music") {
+      musikWunsch = spiel;
+      if (rohdaten[spiel]) { dekodiere(spiel).then(() => { if (musikWunsch === spiel) play(spiel, "_music"); }); return; }
+      const datei = soundtracks[spiel];
+      const b = datei || puffer(spiel, "_music");
+      if (b) starteMusik(spiel, b, `${spiel}:${quelle[spiel] || "eigen"}`);
+      return;
+    }
     const b = puffer(spiel, name);
     if (!b) return;
     const src = ctx.createBufferSource();
     src.buffer = b;
-    src.connect(master);
-    if (name === "_music") { stopMusik(); src.loop = true; musik = src; }
-    else { aktive.add(src); src.onended = () => aktive.delete(src); }
+    src.connect(fx);
+    aktive.add(src); src.onended = () => aktive.delete(src);
     src.start();
   };
   return {
     play, stopAlle,
     get an() { return an; },
-    setAn(v) { an = v; if (master) master.gain.value = v ? 1 : 0; },
-    close() { stopAlle(); try { ctx?.close(); } catch {} ctx = null; },
+    setAn(v) { an = v; pegelSetzen(); },
+    // Lautstärke der Effekte und des Soundtracks (0–100), Soundtrack an/aus
+    setPegel({ effekte = lautFx, musik: m = lautMusik, musikAn: ma = musikAn } = {}) { lautFx = effekte; lautMusik = m; musikAn = ma; pegelSetzen(); },
+    // Musik im späteren Spiel schneller (Tetris: mit dem Level)
+    setTempoAn(v) { tempoAn = !!v; tempoSetzen(); },
+    // Soundtrack-Datei für ein Spiel (ArrayBuffer) oder null für die eingebaute Musik.
+    // Läuft die Musik dieses Spiels gerade, wechselt sie sofort.
+    setSoundtrack(spiel, daten) {
+      if (daten) { delete soundtracks[spiel]; rohdaten[spiel] = daten; quelle[spiel] = "datei"; } else eingebaut(spiel);
+      if (musik?.key.startsWith(`${spiel}:`)) { stopMusik(); play(spiel, "_music"); }
+    },
+    get geraet() { return geraet; },
+    // Ausgabegerät wechseln; laufende Klänge und Musik wandern mit
+    setGeraet(id) { geraet = id || ""; sinkSetzen(); },
+    // kurzer Prüfton auf dem gewählten Gerät (auch wenn der Ton gerade aus ist)
+    test() {
+      if (!ensure()) return;
+      const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime;
+      o.type = "square"; o.frequency.setValueAtTime(660, t); o.frequency.setValueAtTime(880, t + 0.12);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.18, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+      o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.32);
+    },
+    close() { stopAlle(); try { ctx?.close(); } catch {} ctx = null; master = fx = mus = null; gesetzt = ""; },
   };
 }

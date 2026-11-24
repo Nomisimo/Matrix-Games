@@ -25,6 +25,9 @@ const PAUSE_FARBE = [255, 230, 50];
    Optionen beim Anlegen: ton, koennen (0–1, Demo), leerlauf (Sekunden ohne Taste bis zur Demo,
    0 = nie) und rekord ({ get, set }: gespeicherter Highscore). Weitere Optionen gehen an das Spiel.
    Pause gilt für alle Spiele gleich: P oder Start am Gamepad. */
+// Spiele mit Hintergrundmusik während der Runde
+const MUSIK = new Set(["mario", "tetris"]);
+
 export function mitDemo({ create, demo, starte, startTasten = START }) {
   return ({ ton = () => {}, koennen = () => 1, leerlauf = () => LEERLAUF / FPS, rekord, ...optionen } = {}) => {
     let modus = "demo", spiel = null, d = demo({ koennen, ...optionen }), leer = 0, ende = 0, pause = false;
@@ -35,8 +38,8 @@ export function mitDemo({ create, demo, starte, startTasten = START }) {
     const setzePause = (p) => {
       if (p === pause || (p && !pausierbar())) return;
       pause = p;
-      // Mario: Musik anhalten und beim Weiterspielen neu starten
-      if (pause) ton("_stop"); else if (spiel.state === "playing" && spiel.id === "mario") ton("_music");
+      // Musik (Mario, Tetris-Soundtrack) anhalten und beim Weiterspielen an derselben Stelle fortsetzen
+      if (pause) ton("_pause"); else if (spiel.state === "playing" && MUSIK.has(spiel.id)) ton("_music");
     };
     return {
       get state() { return modus === "demo" ? "demo" : pause ? "paused" : spiel.state; },
