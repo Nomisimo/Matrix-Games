@@ -1,6 +1,10 @@
 // Töne der Spiele: dieselben prozeduralen 8-Bit-Klänge wie in den Python-Originalen
 // (Rechteckwellen, Hüllkurven, Mario-Titelmelodie), hier per Web Audio erzeugt.
+import TETRIS_MUSIK from "../../../assets/musik/tetris.mp3";
+
 export const RATE = 22050;
+// Eingebaute Soundtracks (Dateien in assets/musik, beim Build in die App gepackt)
+const EINGEBAUT = { tetris: TETRIS_MUSIK };
 
 const sq = (n, f, duty = 0.5) => Float32Array.from({ length: n }, (_, i) => (((i / RATE) * f) % 1 < duty ? 1 : -1));
 const glide = (n, f0, f1) => {
@@ -142,13 +146,16 @@ const pegel = (p) => { const x = Math.max(0, Math.min(100, +p || 0)) / 100; retu
 
 export function createTon({ onGeraetFehler } = {}) {
   let ctx = null, master = null, fx = null, mus = null, musik = null, an = true, geraet = "", gesetzt = "";
-  let lautFx = 100, lautMusik = 100, musikAn = true;
+  let lautFx = 100, lautMusik = 100, musikAn = true, tempo = 1, tempoAn = true;
   // musik: laufender Soundtrack { src, key, start, offset }; gemerkt: Stelle beim Pausieren
   let gemerkt = null;
   const aktive = new Set();
   const cache = {};
-  const soundtracks = {};        // spiel -> AudioBuffer aus einer Datei
+  const soundtracks = {};        // spiel -> AudioBuffer (eigene Datei oder eingebauter Soundtrack)
   const rohdaten = {};           // spiel -> ArrayBuffer, wird beim ersten Abspielen dekodiert
+  const quelle = {};             // spiel -> "datei" | "eigen" (Teil des Musik-Schlüssels, damit die Pause-Stelle passt)
+  const eingebaut = (spiel) => { delete soundtracks[spiel]; delete rohdaten[spiel]; quelle[spiel] = "eigen"; if (EINGEBAUT[spiel]) rohdaten[spiel] = EINGEBAUT[spiel].slice().buffer; };
+  for (const sp of Object.keys(EINGEBAUT)) eingebaut(sp);
   const puffer = (spiel, name) => {
     const k = `${spiel}:${name}`;
     if (!cache[k]) {
@@ -191,9 +198,18 @@ export function createTon({ onGeraetFehler } = {}) {
     if (ctx.state === "suspended") ctx.resume().catch(() => {});
     return true;
   };
+  // Stelle im Stück (s); das Tempo zählt mit
+  const musikStelle = () => (musik.offset + (ctx.currentTime - musik.start) * musik.rate) % musik.src.buffer.duration;
+  const tempoSetzen = () => {
+    if (!musik) return;
+    const rate = tempoAn ? tempo : 1;
+    if (rate === musik.rate) return;
+    musik.offset = musikStelle(); musik.start = ctx.currentTime; musik.rate = rate;
+    musik.src.playbackRate.setValueAtTime(rate, ctx.currentTime);
+  };
   const stopMusik = (merken = false) => {
     if (!musik) return;
-    gemerkt = merken ? { key: musik.key, offset: (musik.offset + ctx.currentTime - musik.start) % musik.src.buffer.duration } : null;
+    gemerkt = merken ? { key: musik.key, offset: musikStelle() } : null;
     try { musik.src.stop(); } catch {}
     musik = null;
   };
@@ -211,13 +227,15 @@ export function createTon({ onGeraetFehler } = {}) {
     gemerkt = null;
     stopMusik();
     const src = ctx.createBufferSource();
-    src.buffer = b; src.loop = true; src.connect(mus);
-    musik = { src, key, start: ctx.currentTime, offset };
+    const rate = tempoAn ? tempo : 1;
+    src.buffer = b; src.loop = true; src.playbackRate.value = rate; src.connect(mus);
+    musik = { src, key, start: ctx.currentTime, offset, rate };
     src.start(0, offset);
   };
   let musikWunsch = null;        // das Spiel, dessen Musik laufen soll (für Dateien, die noch dekodiert werden)
-  const play = (spiel, name) => {
-    if (name === "_stop") { musikWunsch = null; gemerkt = null; return stopAlle(); }
+  const play = (spiel, name, wert) => {
+    if (name === "_stop") { musikWunsch = null; gemerkt = null; tempo = 1; return stopAlle(); }
+    if (name === "_tempo") { tempo = wert || 1; return tempoSetzen(); }
     if (name === "_pause") { musikWunsch = null; return stopAlle(true); }
     if (!ensure()) return;
     if (name === "death") stopAlle();                 // wie pygame.mixer.stop()
@@ -226,7 +244,7 @@ export function createTon({ onGeraetFehler } = {}) {
       if (rohdaten[spiel]) { dekodiere(spiel).then(() => { if (musikWunsch === spiel) play(spiel, "_music"); }); return; }
       const datei = soundtracks[spiel];
       const b = datei || puffer(spiel, "_music");
-      if (b) starteMusik(spiel, b, `${spiel}:${datei ? "datei" : "eigen"}`);
+      if (b) starteMusik(spiel, b, `${spiel}:${quelle[spiel] || "eigen"}`);
       return;
     }
     const b = puffer(spiel, name);
@@ -243,11 +261,12 @@ export function createTon({ onGeraetFehler } = {}) {
     setAn(v) { an = v; pegelSetzen(); },
     // Lautstärke der Effekte und des Soundtracks (0–100), Soundtrack an/aus
     setPegel({ effekte = lautFx, musik: m = lautMusik, musikAn: ma = musikAn } = {}) { lautFx = effekte; lautMusik = m; musikAn = ma; pegelSetzen(); },
+    // Musik im späteren Spiel schneller (Tetris: mit dem Level)
+    setTempoAn(v) { tempoAn = !!v; tempoSetzen(); },
     // Soundtrack-Datei für ein Spiel (ArrayBuffer) oder null für die eingebaute Musik.
     // Läuft die Musik dieses Spiels gerade, wechselt sie sofort.
     setSoundtrack(spiel, daten) {
-      delete soundtracks[spiel]; delete rohdaten[spiel];
-      if (daten) rohdaten[spiel] = daten;
+      if (daten) { delete soundtracks[spiel]; rohdaten[spiel] = daten; quelle[spiel] = "datei"; } else eingebaut(spiel);
       if (musik?.key.startsWith(`${spiel}:`)) { stopMusik(); play(spiel, "_music"); }
     },
     get geraet() { return geraet; },

@@ -20,7 +20,7 @@ const LS = "matrixgames_einstellungen";
 // lautEffekte/lautMusik: Lautstärke in % für Effekte und Soundtrack; musikAn: Soundtrack an/aus; soundtrack: Dateiname je Spiel (Datei in IndexedDB);
 // audio: Ausgabegerät für alle Spiel-Töne (id aus enumerateDevices, "" = Systemstandard; name zum Wiederfinden, falls sich die id ändert);
 // drehung: in welche Richtung die Wand für Hochkant-Spiele gedreht wird; sensor: HTTP-Endpoint für einen Drehsensor
-const STANDARD = { spiel: "snake", aus: [], ton: true, audio: { id: "", name: "" }, lautEffekte: 100, lautMusik: 70, musikAn: true, soundtrack: {}, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, tetrisSchatten: 12, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games", pixel: 10 }, haelften: [{ dreh: 0, spiegeln: false }, { dreh: 0, spiegeln: false }] };
+const STANDARD = { spiel: "snake", aus: [], ton: true, audio: { id: "", name: "" }, lautEffekte: 100, lautMusik: 70, musikAn: true, musikTempo: true, soundtrack: {}, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, tetrisSchatten: 12, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games", pixel: 10 }, haelften: [{ dreh: 0, spiegeln: false }, { dreh: 0, spiegeln: false }] };
 const laden = () => {
   try {
     const v = JSON.parse(localStorage.getItem(LS) || "null");
@@ -205,6 +205,7 @@ export default function App() {
     return () => tonRef.current.close();
   }, []);
   useEffect(() => { tonRef.current.setAn(cfg.ton); }, [cfg.ton]);
+  useEffect(() => { tonRef.current.setTempoAn(cfg.musikTempo); }, [cfg.musikTempo]);
   useEffect(() => { tonRef.current.setPegel({ effekte: cfg.lautEffekte, musik: cfg.lautMusik, musikAn: cfg.musikAn }); }, [cfg.lautEffekte, cfg.lautMusik, cfg.musikAn]);
   // Gespeicherte Soundtrack-Dateien beim Start an den Ton geben
   const [soundtrackStatus, setSoundtrackStatus] = useState("");
@@ -245,7 +246,7 @@ export default function App() {
     tonRef.current?.stopAlle();
     const def = SPIELE.find((s) => s.id === cfg.spiel) || SPIELE[0];
     gameRef.current = def.create({
-      ton: (name) => tonRef.current?.play(def.id, name),
+      ton: (name, wert) => tonRef.current?.play(def.id, name, wert),
       koennen: () => (koennenRef.current ?? 80) / 100,
       leerlauf: () => cfgRef.current.leerlauf,
       vorhersage: () => vorhersageRef.current ?? 0,
@@ -667,14 +668,16 @@ export default function App() {
               <Regler label="Lautstärke Effekte" wert={cfg.lautEffekte} onChange={(v) => set("lautEffekte", v)} />
               <div style={{ marginTop: 14 }}><Toggle checked={cfg.musikAn} onChange={(v) => set("musikAn", v)} label="Soundtrack (Musik im Spiel)" /></div>
               <Regler label="Lautstärke Soundtrack" wert={cfg.lautMusik} onChange={(v) => set("lautMusik", v)} aus={!cfg.musikAn} />
+              <div style={{ marginTop: 10, opacity: cfg.musikAn ? 1 : 0.5 }}><Toggle checked={cfg.musikTempo} disabled={!cfg.musikAn} onChange={(v) => set("musikTempo", v)} label="Tetris: Musik wird mit dem Level schneller" /></div>
+              <span className="sp-norm-hint">Je Level 2,5 % schneller, ab Level 12 um 30 %.</span>
               {SOUNDTRACK_SPIELE.map((id) => {
                 const name = SPIELE.find((sp) => sp.id === id)?.name || id, datei = cfg.soundtrack[id];
                 return <label key={id} style={{ ...S.field, marginTop: 10 }}><span style={S.fieldLabel}>Soundtrack {name}</span>
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <span style={{ flex: 1, fontSize: 12, color: datei ? TEXT2 : MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={datei || ""}>{datei || "keine Datei"}</span>
+                    <span style={{ flex: 1, fontSize: 12, color: TEXT2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={datei || ""}>{datei || "eingebauter Soundtrack"}</span>
                     <label style={{ ...S.smallBtn, cursor: "pointer" }} title="Audiodatei (MP3, WAV, OGG, M4A) wählen"><FileAudio size={12} /> Datei wählen
                       <input type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac" style={{ display: "none" }} onChange={(e) => { soundtrackWaehlen(id, e.target.files?.[0]); e.target.value = ""; }} /></label>
-                    {datei && <button style={S.smallBtn} onClick={() => soundtrackEntfernen(id)} title="Soundtrack entfernen"><X size={12} /></button>}
+                    {datei && <button style={S.smallBtn} onClick={() => soundtrackEntfernen(id)} title="Eigene Datei entfernen, zurück zum eingebauten Soundtrack"><X size={12} /></button>}
                   </div>
                   <span className="sp-norm-hint">{soundtrackStatus || "Läuft in Schleife, solange eine Runde läuft; Pause hält ihn an, Game Over stoppt ihn. Die Datei bleibt in der App gespeichert."}</span></label>;
               })}
