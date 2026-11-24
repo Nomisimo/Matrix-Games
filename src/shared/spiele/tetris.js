@@ -316,7 +316,7 @@ export function createTetris({ ton = () => {}, rekord, drehung = () => "rechts",
   let state = "title", game = null, blink = 0, neuerRekord = false, eigener = 0, ende = 0;
   rekord ||= { get: () => eigener, set: (n) => { eigener = n; } };
   const hoch = new Bild(HW, HH);
-  const neu = () => { game = new TetrisRunde(ton); state = "playing"; ende = 0; };
+  const neu = () => { game = new TetrisRunde(ton); state = "playing"; ende = 0; ton("_music"); };
   return {
     id: "tetris",
     hochkant: true,
@@ -329,13 +329,13 @@ export function createTetris({ ton = () => {}, rekord, drehung = () => "rechts",
       else if (state === "game_over" && ende > TOPOUT_ZEIT) {
         // KeyX: A am Gamepad
         if (code === "Space" || code === "Enter" || code === "KeyX") neu();
-        else if (code === "Escape") state = "title";
+        else if (code === "Escape") { state = "title"; ton("_stop"); }
       }
     },
     step(held = new Set()) {
       blink++;
       if (state === "playing" && game.update(held) === "over") {
-        ton("over");
+        ton("_stop"); ton("over");
         neuerRekord = game.score > 0 && game.score > rekord.get();
         if (neuerRekord) rekord.set(game.score);
         state = "game_over";

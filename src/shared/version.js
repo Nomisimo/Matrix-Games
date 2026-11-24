@@ -8,6 +8,9 @@ export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 export const CHANGELOG = {
   "1.0.0-beta.8": [
     "Ton: Audio-Ausgabe in den Einstellungen wählbar (z. B. USB-Soundkarte oder Audio-Interface); alle Spiel-Töne und die Musik laufen über dieses Gerät, mit Prüfton. Die Auswahl wird gespeichert; ist das Gerät nicht verbunden, läuft der Ton über den Systemstandard",
+    "Ton: getrennte Lautstärke für Effekte und Soundtrack, Soundtrack an/aus",
+    "Tetris: neue eigene Effekte für Schieben, Drehen, Ablegen, Hard Drop, Zeilen, Tetris, Level und Game Over; Soundtrack als eigene Audiodatei wählbar (läuft in Schleife während der Runde, Pause setzt an derselben Stelle fort)",
+    "Mario: Musik läuft nach der Pause an derselben Stelle weiter statt von vorn",
   ],
   "1.0.0-beta.7": [
     "Matrix drehen: jede der beiden Matrizen einzeln um 0°, 90°, 180° oder 270° drehen und spiegeln, für Hälften, die anders verbaut sind; gilt für sACN und NDI, mit dem Testbild auszurichten",
