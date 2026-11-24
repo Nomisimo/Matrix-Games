@@ -111,8 +111,20 @@ const KLAENGE = {
   tetris: tetrisSounds,
 };
 
-export function createTon() {
-  let ctx = null, master = null, musik = null, an = true;
+// Ausgabegerät: "" = Systemstandard, sonst die deviceId aus navigator.mediaDevices.enumerateDevices()
+// (kind "audiooutput"). Alle Klänge laufen über einen AudioContext, der per setSinkId auf dieses Gerät geht.
+export async function audioAusgaenge() {
+  try {
+    const md = navigator.mediaDevices;
+    if (!md?.enumerateDevices) return [];
+    return (await md.enumerateDevices())
+      .filter((d) => d.kind === "audiooutput" && d.deviceId && d.deviceId !== "default" && d.deviceId !== "communications")
+      .map((d, i) => ({ id: d.deviceId, name: d.label || `Ausgabe ${i + 1}` }));
+  } catch { return []; }
+}
+
+export function createTon({ onGeraetFehler } = {}) {
+  let ctx = null, master = null, musik = null, an = true, geraet = "", gesetzt = "";
   const aktive = new Set();
   const cache = {};
   const puffer = (spiel, name) => {
@@ -126,10 +138,24 @@ export function createTon() {
     }
     return cache[k];
   };
+  // Gerät am Kontext setzen; klappt es nicht (Gerät weg, keine Unterstützung), bleibt der Systemstandard
+  const sinkSetzen = () => {
+    if (!ctx || gesetzt === geraet) return;
+    const ziel = geraet;
+    gesetzt = ziel;
+    if (typeof ctx.setSinkId !== "function") { if (ziel) onGeraetFehler?.(ziel, new Error("setSinkId nicht unterstützt")); return; }
+    ctx.setSinkId(ziel).catch((e) => {
+      if (gesetzt !== ziel) return;
+      gesetzt = "";
+      ctx?.setSinkId("").catch(() => {});
+      onGeraetFehler?.(ziel, e);
+    });
+  };
   const ensure = () => {
     if (!ctx) {
-      try { ctx = new AudioContext(); master = ctx.createGain(); master.connect(ctx.destination); master.gain.value = an ? 1 : 0; } catch { return false; }
+      try { ctx = new AudioContext(); master = ctx.createGain(); master.connect(ctx.destination); master.gain.value = an ? 1 : 0; gesetzt = ""; } catch { return false; }
     }
+    sinkSetzen();
     if (ctx.state === "suspended") ctx.resume().catch(() => {});
     return true;
   };
@@ -152,6 +178,17 @@ export function createTon() {
     play, stopAlle,
     get an() { return an; },
     setAn(v) { an = v; if (master) master.gain.value = v ? 1 : 0; },
-    close() { stopAlle(); try { ctx?.close(); } catch {} ctx = null; },
+    get geraet() { return geraet; },
+    // Ausgabegerät wechseln; laufende Klänge und Musik wandern mit
+    setGeraet(id) { geraet = id || ""; sinkSetzen(); },
+    // kurzer Prüfton auf dem gewählten Gerät (auch wenn der Ton gerade aus ist)
+    test() {
+      if (!ensure()) return;
+      const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime;
+      o.type = "square"; o.frequency.setValueAtTime(660, t); o.frequency.setValueAtTime(880, t + 0.12);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.18, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+      o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.32);
+    },
+    close() { stopAlle(); try { ctx?.close(); } catch {} ctx = null; gesetzt = ""; },
   };
 }

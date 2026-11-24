@@ -5,10 +5,10 @@ import { anleitungHtml, verfuegbareSpiele } from "../shared/anleitung.js";
 import { createMenue } from "../shared/spiele/menue.js";
 import { groesse, drehe, passt, richtungAus, drehHinweis, testbild, QUER, HOCHKANT } from "../shared/spiele/drehen.js";
 import { api, isElectron } from "./api.js";
-import { createTon } from "./spiele/ton.js";
+import { createTon, audioAusgaenge } from "./spiele/ton.js";
 import { Toggle, Dot, Card, Table, td, Hint, Modal } from "./ui.jsx";
 import { CHANGELOG, compareVersions, neuesteVersion, istBeta, RELEASES_URL } from "../shared/version.js";
-import { Volume2, VolumeX, RotateCcw, RefreshCw, TriangleAlert, Gamepad2, Sun, Moon, Monitor, Power, Keyboard, ArrowUpCircle, Download, Pause, Play, Trophy, FileDown, RotateCw, Compass, FlipHorizontal2 } from "lucide-react";
+import { Volume2, VolumeX, Speaker, RotateCcw, RefreshCw, TriangleAlert, Gamepad2, Sun, Moon, Monitor, Power, Keyboard, ArrowUpCircle, Download, Pause, Play, Trophy, FileDown, RotateCw, Compass, FlipHorizontal2 } from "lucide-react";
 import APP_ICON_SVG from "../../assets/app-icon/icon.svg";
 const APP_ICON = `data:image/svg+xml;utf8,${encodeURIComponent(APP_ICON_SVG)}`;
 
@@ -16,12 +16,13 @@ const LS = "matrixgames_einstellungen";
 // Vorgaben wie im Snake-Original auf der echten Matrix (Universe 29 und 33, 144 Pixel je Universe)
 // menue: Spielmenü auf der Matrix; leerlauf: Sekunden ohne Eingabe bis zur Demo (0 = nie);
 // comStaerke: Pong-Computer in %; tetrisSchatten: Helligkeit des Tetris-Schattens in % der Steinfarbe; vorhersage: Verzögerung der Ausgabe in ms (Snake); rekorde: Highscore je Spiel; aus: abgewählte Spiele (ids);
+// audio: Ausgabegerät für alle Spiel-Töne (id aus enumerateDevices, "" = Systemstandard; name zum Wiederfinden, falls sich die id ändert);
 // drehung: in welche Richtung die Wand für Hochkant-Spiele gedreht wird; sensor: HTTP-Endpoint für einen Drehsensor
-const STANDARD = { spiel: "snake", aus: [], ton: true, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, tetrisSchatten: 12, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games", pixel: 10 }, haelften: [{ dreh: 0, spiegeln: false }, { dreh: 0, spiegeln: false }] };
+const STANDARD = { spiel: "snake", aus: [], ton: true, audio: { id: "", name: "" }, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, tetrisSchatten: 12, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games", pixel: 10 }, haelften: [{ dreh: 0, spiegeln: false }, { dreh: 0, spiegeln: false }] };
 const laden = () => {
   try {
     const v = JSON.parse(localStorage.getItem(LS) || "null");
-    return v ? { ...STANDARD, ...v, aus: Array.isArray(v.aus) ? v.aus : [], rekorde: { ...v.rekorde }, sensor: { ...STANDARD.sensor, ...v.sensor }, sacn: { ...STANDARD.sacn, ...v.sacn }, ndi: { ...STANDARD.ndi, ...v.ndi },
+    return v ? { ...STANDARD, ...v, aus: Array.isArray(v.aus) ? v.aus : [], rekorde: { ...v.rekorde }, sensor: { ...STANDARD.sensor, ...v.sensor }, audio: { ...STANDARD.audio, ...v.audio }, sacn: { ...STANDARD.sacn, ...v.sacn }, ndi: { ...STANDARD.ndi, ...v.ndi },
       haelften: STANDARD.haelften.map((h, i) => ({ ...h, ...(Array.isArray(v.haelften) ? v.haelften[i] : null) })) } : STANDARD;
   } catch { return STANDARD; }
 };
@@ -192,8 +193,30 @@ export default function App() {
   useEffect(() => api.onDrehsensor(setSensorSt), []);
 
   // Ton
-  useEffect(() => { tonRef.current = createTon(); return () => tonRef.current.close(); }, []);
+  const [ausgaenge, setAusgaenge] = useState([]);
+  const [audioFehler, setAudioFehler] = useState("");
+  useEffect(() => {
+    tonRef.current = createTon({ onGeraetFehler: (id, e) => { console.warn("Audio-Ausgabe", id, e); setAudioFehler("Das gewählte Gerät ließ sich nicht öffnen. Der Ton läuft über den Systemstandard."); } });
+    return () => tonRef.current.close();
+  }, []);
   useEffect(() => { tonRef.current.setAn(cfg.ton); }, [cfg.ton]);
+  // Ausgabegeräte laden und bei An- und Abstecken neu einlesen
+  const ladeAusgaenge = useCallback(() => audioAusgaenge().then(setAusgaenge), []);
+  useEffect(() => {
+    ladeAusgaenge();
+    const md = navigator.mediaDevices;
+    md?.addEventListener?.("devicechange", ladeAusgaenge);
+    return () => md?.removeEventListener?.("devicechange", ladeAusgaenge);
+  }, [ladeAusgaenge]);
+  // Gespeichertes Gerät suchen (erst per id, sonst per Name); fehlt es, läuft der Ton über den Standard,
+  // die Auswahl bleibt aber gespeichert und greift wieder, sobald das Gerät zurück ist.
+  const audioGeraet = cfg.audio.id ? ausgaenge.find((d) => d.id === cfg.audio.id) || (cfg.audio.name && ausgaenge.find((d) => d.name === cfg.audio.name)) || null : null;
+  const audioFehlt = !!cfg.audio.id && ausgaenge.length > 0 && !audioGeraet;
+  useEffect(() => {
+    if (audioGeraet && audioGeraet.id !== cfg.audio.id) set("audio", { id: audioGeraet.id });
+    setAudioFehler("");
+    tonRef.current.setGeraet(audioGeraet?.id || "");
+  }, [audioGeraet?.id]);
 
   // Spiel anlegen (bei Wechsel neu). Kam der Wechsel aus dem Spielmenü, startet die Runde gleich.
   const neu = useCallback(() => {
@@ -602,6 +625,23 @@ export default function App() {
                   </span>}
                 </>}
               </div>
+            </div>
+
+            <div style={{ ...S.section, padding: 16 }}>
+              <div className="sp-section-label">Ton</div>
+              <Toggle checked={cfg.ton} onChange={(v) => set("ton", v)} label="Spiel-Töne und Musik" />
+              <label style={{ ...S.field, marginTop: 10 }}><span style={S.fieldLabel}>Audio-Ausgabe</span>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <select style={S.selectSm} value={audioGeraet ? audioGeraet.id : cfg.audio.id ? "__fehlt" : ""}
+                    onChange={(e) => { const d = ausgaenge.find((x) => x.id === e.target.value); set("audio", d ? { id: d.id, name: d.name } : { id: "", name: "" }); }}>
+                    <option value="">wie das System</option>
+                    {audioFehlt && <option value="__fehlt" disabled>{cfg.audio.name || "Gespeichertes Gerät"} (nicht verbunden)</option>}
+                    {ausgaenge.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                  <button style={S.smallBtn} onClick={ladeAusgaenge} title="Liste neu laden"><RefreshCw size={12} /></button>
+                  <button style={S.smallBtn} onClick={(e) => { e.currentTarget.blur(); tonRef.current?.test(); }} title="Prüfton auf dem gewählten Gerät abspielen"><Speaker size={12} /> Test</button>
+                </div>
+                <span className="sp-norm-hint">{audioFehler || (audioFehlt ? "Das gespeicherte Gerät ist nicht verbunden. Bis es wieder da ist, läuft der Ton über den Systemstandard." : "Alle Töne und die Musik der Spiele laufen über dieses Gerät, z. B. eine USB-Soundkarte oder ein Audio-Interface. Die Auswahl wird gespeichert.")}</span></label>
             </div>
 
             <div style={{ ...S.section, padding: 16 }}>

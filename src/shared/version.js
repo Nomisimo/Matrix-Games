@@ -6,6 +6,9 @@ export const REPO = "Nomisimo/Matrix-Games";
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 
 export const CHANGELOG = {
+  "1.0.0-beta.8": [
+    "Ton: Audio-Ausgabe in den Einstellungen wählbar (z. B. USB-Soundkarte oder Audio-Interface); alle Spiel-Töne und die Musik laufen über dieses Gerät, mit Prüfton. Die Auswahl wird gespeichert; ist das Gerät nicht verbunden, läuft der Ton über den Systemstandard",
+  ],
   "1.0.0-beta.7": [
     "Matrix drehen: jede der beiden Matrizen einzeln um 0°, 90°, 180° oder 270° drehen und spiegeln, für Hälften, die anders verbaut sind; gilt für sACN und NDI, mit dem Testbild auszurichten",
   ],
