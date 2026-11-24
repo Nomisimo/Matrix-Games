@@ -6,6 +6,9 @@ export const REPO = "Nomisimo/Matrix-Games";
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 
 export const CHANGELOG = {
+  "1.0.0": [
+    "Erste stabile Version (keine Beta mehr): Snake, Pong, Mario Jump und Tetris mit sACN- und NDI-Ausgabe, Spielmenü, Drehsensor, Audio-Ausgabe und Soundtrack wie in 1.0.0-beta.8",
+  ],
   "1.0.0-beta.8": [
     "Ton: Audio-Ausgabe in den Einstellungen wählbar (z. B. USB-Soundkarte oder Audio-Interface); alle Spiel-Töne und die Musik laufen über dieses Gerät, mit Prüfton. Die Auswahl wird gespeichert; ist das Gerät nicht verbunden, läuft der Ton über den Systemstandard",
     "Ton: getrennte Lautstärke für Effekte und Soundtrack, Soundtrack an/aus",

@@ -786,3 +786,10 @@ test("Tetris: Soundtrack startet mit der Runde, wird mit dem Level schneller und
   for (let i = 0; i < 5 && g.state === "playing"; i++) g.step();
   assert.deepEqual(t.slice(-2), ["_stop", "over"]);
 });
+
+test("Versionen: 1.0.0 ist neuer als jede Beta, Betas sehen das stabile Release", () => {
+  assert.ok(compareVersions("1.0.0", "1.0.0-beta.8") > 0);
+  assert.ok(compareVersions("1.0.0-beta.8", "1.0.0") < 0);
+  const list = [{ tag_name: "v1.0.0-beta.8", prerelease: true }, { tag_name: "v1.0.0", prerelease: false }];
+  assert.equal(neuesteVersion(list).tag_name, "v1.0.0");
+});
