@@ -6,6 +6,9 @@ export const REPO = "Nomisimo/Matrix-Games";
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 
 export const CHANGELOG = {
+  "1.0.2": [
+    "Ton: neue Checkbox „Split Audio Channels“ in den Einstellungen. Ist sie an, läuft der Soundtrack (Musikbett) nur auf dem linken Kanal und alle Game-Sounds nur auf dem rechten, z. B. für getrennte Mischpult-Kanäle. Aus: normales Stereo",
+  ],
   "1.0.1": [
     "Behoben: Die App startete nur mit einem schwarzen Fenster (Oberfläche lief in Electron nicht)",
     "Windows: Die App und die Verknüpfungen zeigen jetzt das Matrix-Games-Logo statt des Electron-Logos",

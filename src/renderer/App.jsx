@@ -17,10 +17,10 @@ const LS = "matrixgames_einstellungen";
 // Vorgaben wie im Snake-Original auf der echten Matrix (Universe 29 und 33, 144 Pixel je Universe)
 // menue: Spielmenü auf der Matrix; leerlauf: Sekunden ohne Eingabe bis zur Demo (0 = nie);
 // comStaerke: Pong-Computer in %; tetrisSchatten: Helligkeit des Tetris-Schattens in % der Steinfarbe; vorhersage: Verzögerung der Ausgabe in ms (Snake); rekorde: Highscore je Spiel; aus: abgewählte Spiele (ids);
-// lautEffekte/lautMusik: Lautstärke in % für Effekte und Soundtrack; musikAn: Soundtrack an/aus; soundtrack: Dateiname je Spiel (Datei in IndexedDB);
+// lautEffekte/lautMusik: Lautstärke in % für Effekte und Soundtrack; musikAn: Soundtrack an/aus; kanaeleGetrennt: Soundtrack links, Effekte rechts; soundtrack: Dateiname je Spiel (Datei in IndexedDB);
 // audio: Ausgabegerät für alle Spiel-Töne (id aus enumerateDevices, "" = Systemstandard; name zum Wiederfinden, falls sich die id ändert);
 // drehung: in welche Richtung die Wand für Hochkant-Spiele gedreht wird; sensor: HTTP-Endpoint für einen Drehsensor
-const STANDARD = { spiel: "snake", aus: [], ton: true, audio: { id: "", name: "" }, lautEffekte: 100, lautMusik: 70, musikAn: true, musikTempo: true, soundtrack: {}, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, tetrisSchatten: 12, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games", pixel: 10 }, haelften: [{ dreh: 0, spiegeln: false }, { dreh: 0, spiegeln: false }] };
+const STANDARD = { spiel: "snake", aus: [], ton: true, audio: { id: "", name: "" }, lautEffekte: 100, lautMusik: 70, musikAn: true, musikTempo: true, kanaeleGetrennt: false, soundtrack: {}, schwarz: false, koennen: 80, menue: false, leerlauf: 30, comStaerke: 60, tetrisSchatten: 12, vorhersage: 0, rekorde: {}, drehung: "rechts", sensor: { on: false, port: 8787 }, sacn: { on: false, iface: "", u1: 29, u2: 33, fpu: 144 }, ndi: { on: false, name: "Matrix Games", pixel: 10 }, haelften: [{ dreh: 0, spiegeln: false }, { dreh: 0, spiegeln: false }] };
 const laden = () => {
   try {
     const v = JSON.parse(localStorage.getItem(LS) || "null");
@@ -206,6 +206,7 @@ export default function App() {
   }, []);
   useEffect(() => { tonRef.current.setAn(cfg.ton); }, [cfg.ton]);
   useEffect(() => { tonRef.current.setTempoAn(cfg.musikTempo); }, [cfg.musikTempo]);
+  useEffect(() => { tonRef.current.setGetrennt(cfg.kanaeleGetrennt); }, [cfg.kanaeleGetrennt]);
   useEffect(() => { tonRef.current.setPegel({ effekte: cfg.lautEffekte, musik: cfg.lautMusik, musikAn: cfg.musikAn }); }, [cfg.lautEffekte, cfg.lautMusik, cfg.musikAn]);
   // Gespeicherte Soundtrack-Dateien beim Start an den Ton geben
   const [soundtrackStatus, setSoundtrackStatus] = useState("");
@@ -665,6 +666,8 @@ export default function App() {
                   <button style={S.smallBtn} onClick={(e) => { e.currentTarget.blur(); tonRef.current?.test(); }} title="Prüfton auf dem gewählten Gerät abspielen"><Speaker size={12} /> Test</button>
                 </div>
                 <span className="sp-norm-hint">{audioFehler || (audioFehlt ? "Das gespeicherte Gerät ist nicht verbunden. Bis es wieder da ist, läuft der Ton über den Systemstandard." : "Alle Töne und die Musik der Spiele laufen über dieses Gerät, z. B. eine USB-Soundkarte oder ein Audio-Interface. Die Auswahl wird gespeichert.")}</span></label>
+              <div style={{ marginTop: 10 }}><Toggle checked={cfg.kanaeleGetrennt} onChange={(v) => set("kanaeleGetrennt", v)} label="Split Audio Channels" /></div>
+              <span className="sp-norm-hint">{cfg.kanaeleGetrennt ? "Links nur der Soundtrack (Musikbett), rechts nur die Game-Sounds." : "Aus: normales Stereo. An: links der Soundtrack (Musikbett), rechts die Game-Sounds."}</span>
               <Regler label="Lautstärke Effekte" wert={cfg.lautEffekte} onChange={(v) => set("lautEffekte", v)} />
               <div style={{ marginTop: 14 }}><Toggle checked={cfg.musikAn} onChange={(v) => set("musikAn", v)} label="Soundtrack (Musik im Spiel)" /></div>
               <Regler label="Lautstärke Soundtrack" wert={cfg.lautMusik} onChange={(v) => set("lautMusik", v)} aus={!cfg.musikAn} />

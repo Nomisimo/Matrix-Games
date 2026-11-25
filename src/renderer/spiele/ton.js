@@ -145,8 +145,8 @@ export async function audioAusgaenge() {
 const pegel = (p) => { const x = Math.max(0, Math.min(100, +p || 0)) / 100; return x * x; };
 
 export function createTon({ onGeraetFehler } = {}) {
-  let ctx = null, master = null, fx = null, mus = null, musik = null, an = true, geraet = "", gesetzt = "";
-  let lautFx = 100, lautMusik = 100, musikAn = true, tempo = 1, tempoAn = true;
+  let ctx = null, master = null, fx = null, mus = null, panFx = null, panMus = null, musik = null, an = true, geraet = "", gesetzt = "";
+  let lautFx = 100, lautMusik = 100, musikAn = true, tempo = 1, tempoAn = true, getrennt = false;
   // musik: laufender Soundtrack { src, key, start, offset }; gemerkt: Stelle beim Pausieren
   let gemerkt = null;
   const aktive = new Set();
@@ -172,6 +172,10 @@ export function createTon({ onGeraetFehler } = {}) {
     master.gain.value = an ? 1 : 0;
     fx.gain.value = pegel(lautFx);
     mus.gain.value = musikAn ? pegel(lautMusik) : 0;
+    // Kanäle getrennt: Soundtrack nur links, Effekte nur rechts (Mono- und Stereo-Quellen landen
+    // ganz auf der einen Seite); sonst normales Stereo in der Mitte
+    panMus.pan.value = getrennt ? -1 : 0;
+    panFx.pan.value = getrennt ? 1 : 0;
   };
   // Gerät am Kontext setzen; klappt es nicht (Gerät weg, keine Unterstützung), bleibt der Systemstandard
   const sinkSetzen = () => {
@@ -190,7 +194,8 @@ export function createTon({ onGeraetFehler } = {}) {
     if (!ctx) {
       try {
         ctx = new AudioContext(); master = ctx.createGain(); master.connect(ctx.destination);
-        fx = ctx.createGain(); fx.connect(master); mus = ctx.createGain(); mus.connect(master);
+        panFx = ctx.createStereoPanner(); panFx.connect(master); panMus = ctx.createStereoPanner(); panMus.connect(master);
+        fx = ctx.createGain(); fx.connect(panFx); mus = ctx.createGain(); mus.connect(panMus);
         gesetzt = ""; pegelSetzen();
       } catch { return false; }
     }
@@ -263,6 +268,9 @@ export function createTon({ onGeraetFehler } = {}) {
     setPegel({ effekte = lautFx, musik: m = lautMusik, musikAn: ma = musikAn } = {}) { lautFx = effekte; lautMusik = m; musikAn = ma; pegelSetzen(); },
     // Musik im späteren Spiel schneller (Tetris: mit dem Level)
     setTempoAn(v) { tempoAn = !!v; tempoSetzen(); },
+    // Split Audio Channels: Soundtrack links, Effekte rechts (z. B. für getrennte Lautsprecher oder Mischpult-Kanäle)
+    setGetrennt(v) { getrennt = !!v; pegelSetzen(); },
+    get getrennt() { return getrennt; },
     // Soundtrack-Datei für ein Spiel (ArrayBuffer) oder null für die eingebaute Musik.
     // Läuft die Musik dieses Spiels gerade, wechselt sie sofort.
     setSoundtrack(spiel, daten) {
@@ -280,6 +288,6 @@ export function createTon({ onGeraetFehler } = {}) {
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.18, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
       o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.32);
     },
-    close() { stopAlle(); try { ctx?.close(); } catch {} ctx = null; master = fx = mus = null; gesetzt = ""; },
+    close() { stopAlle(); try { ctx?.close(); } catch {} ctx = null; master = fx = mus = panFx = panMus = null; gesetzt = ""; },
   };
 }
