@@ -88,7 +88,7 @@ export function mitDemo({ create, demo, starte, startTasten = START }) {
 function pauseBild(b) {
   // Spielbild abdunkeln, darüber „PAUSE“
   for (let i = 0; i < b.px.length; i++) b.px[i] = b.px[i] >> 2;
-  const t = "PAUSE", x = MARIO_FONT.center(t, b.w), w = MARIO_FONT.textWidth(t), y = (b.h >> 1) - 2;
+  const t = "PAUSE", x = MARIO_FONT.center(t, b.w), w = MARIO_FONT.textWidth(t), y = (b.h >> 1) - 6;
   b.rect(x - 2, y - 2, w + 4, 9, [0, 0, 0]);
   MARIO_FONT.drawText(b, t, x, y, PAUSE_FARBE);
 }
