@@ -22,6 +22,16 @@ function createWindow() {
   mainWin.setMenuBarVisibility(false);
   mainWin.loadFile(path.join(root, 'dist-app', 'index.html'));
   mainWin.once('ready-to-show', () => { mainWin.show(); mainWin.focus(); mainWin.webContents.focus(); });
+  // Rauchtest (npm run smoke, CI): prüft, ob die Oberfläche wirklich etwas anzeigt, und beendet die App
+  if (process.env.MATRIX_GAMES_SMOKE) {
+    let fehler = '';
+    mainWin.webContents.on('console-message', (_e, level, msg) => { if (level >= 3) fehler += msg + '\n'; });
+    mainWin.webContents.once('did-finish-load', () => setTimeout(async () => {
+      const n = await mainWin.webContents.executeJavaScript('document.getElementById("root")?.childElementCount || 0').catch(() => 0);
+      console.log(n > 0 ? 'SMOKE OK' : 'SMOKE FEHLER: Oberfläche ist leer\n' + fehler);
+      app.exit(n > 0 ? 0 : 1);
+    }, 3000));
+  }
   mainWin.on('focus', () => { if (!mainWin.isDestroyed()) mainWin.webContents.focus(); });
   // Links im Standardbrowser öffnen
   mainWin.webContents.setWindowOpenHandler(({ url }) => {

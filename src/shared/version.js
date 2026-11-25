@@ -6,6 +6,10 @@ export const REPO = "Nomisimo/Matrix-Games";
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 
 export const CHANGELOG = {
+  "1.0.1": [
+    "Behoben: Die App startete nur mit einem schwarzen Fenster (Oberfläche lief in Electron nicht)",
+    "Windows: Die App und die Verknüpfungen zeigen jetzt das Matrix-Games-Logo statt des Electron-Logos",
+  ],
   "1.0.0": [
     "Erste stabile Version (keine Beta mehr): Snake, Pong, Mario Jump und Tetris mit sACN- und NDI-Ausgabe, Spielmenü, Drehsensor, Audio-Ausgabe und Soundtrack wie in 1.0.0-beta.8",
   ],

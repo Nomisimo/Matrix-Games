@@ -18,3 +18,30 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      # Startet die App kurz und prüft, dass die Oberfläche nicht leer (schwarz) bleibt
+      - name: Rauchtest (App startet mit Oberfläche)
+        run: xvfb-run -a npm run smoke
+
+  # Windows: App bauen (ohne Installer), Start mit Oberfläche und Logo/Namen der .exe prüfen
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Rauchtest (App startet mit Oberfläche)
+        run: npm run smoke
+      - name: Windows-Programm bauen
+        run: npx electron-builder --win --x64 --dir --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - name: Windows-Programm prüfen (Logo, Name)
+        shell: pwsh
+        run: |
+          $info = (Get-Item "dist/win-unpacked/Matrix Games.exe").VersionInfo
+          Write-Host "ProductName: $($info.ProductName), FileDescription: $($info.FileDescription)"
+          if ($info.ProductName -ne "Matrix Games") { Write-Error "Matrix Games.exe trägt noch die Electron-Angaben (Logo nicht gesetzt)"; exit 1 }
