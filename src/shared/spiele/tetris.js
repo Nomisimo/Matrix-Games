@@ -356,8 +356,8 @@ export function createTetris({ ton = () => {}, rekord, drehung = () => "rechts",
           game.render(h, true, schatten());
           if (pause) {
             for (let i = 0; i < h.px.length; i++) h.px[i] >>= 2;
-            h.rect(0, 19, HW, 9, SCHWARZ);
-            zentriert(h, "PAUSE", 21, [255, 230, 50]);
+            h.rect(0, 15, HW, 9, SCHWARZ);
+            zentriert(h, "PAUSE", 17, [255, 230, 50]);
           }
         } else if (ende <= TOPOUT_ZEIT) {
           // Spielende: das Feld füllt sich von unten grau
