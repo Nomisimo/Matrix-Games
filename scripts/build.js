@@ -12,6 +12,9 @@ async function build() {
     entryPoints: [path.join(ROOT, "src", "renderer", "index.jsx")],
     bundle: true,
     format: "iife",
+    // Electron 33 = Chromium 130. Ohne Ziel nimmt esbuild „esnext“ und baut z. B. die mp3-Datei mit
+    // Uint8Array.fromBase64 ein, das es in Chromium 130 nicht gibt: die Oberfläche bleibt dann schwarz.
+    target: "chrome130",
     minify: process.argv.includes("--minify"),
     loader: { ".jsx": "jsx", ".js": "jsx", ".svg": "text", ".mp3": "binary" },
     jsx: "transform",
