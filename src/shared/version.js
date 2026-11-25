@@ -6,6 +6,9 @@ export const REPO = "Nomisimo/Matrix-Games";
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 
 export const CHANGELOG = {
+  "1.0.3": [
+    "Pause: Der PAUSE-Text steht jetzt 4 Pixel höher (alle Spiele, auch Tetris hochkant)",
+  ],
   "1.0.2": [
     "Ton: neue Checkbox „Split Audio Channels“ in den Einstellungen. Ist sie an, läuft der Soundtrack (Musikbett) nur auf dem linken Kanal und alle Game-Sounds nur auf dem rechten, z. B. für getrennte Mischpult-Kanäle. Aus: normales Stereo",
   ],
