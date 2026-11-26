@@ -650,6 +650,15 @@ test("Tetris: Stein liegt nach dem Lock-Delay fest, Stapel bis oben beendet das 
   assert.equal(over, "over");
 });
 
+test("Tetris: neue Steine erscheinen gleich ganz im sichtbaren Feld", () => {
+  for (const typ of ["I", "J", "L", "O", "S", "T", "Z"]) {
+    const r = new TetrisRunde(() => {}, () => 0.3);
+    r.naechster = typ; r.spawn();
+    assert.ok(r.zellen().every(([, y]) => y >= 2), `${typ} ganz sichtbar`);
+    assert.equal(Math.min(...r.zellen().map(([, y]) => y)), 2, `${typ} ganz oben`);
+  }
+});
+
 test("Tetris: endloses Hin- und Herschieben am Boden setzt den Stein trotzdem fest", () => {
   const r = new TetrisRunde(() => {}, () => 0.3);
   r.stein = { typ: "T", rot: 0, x: 3, y: r.geisterY() };

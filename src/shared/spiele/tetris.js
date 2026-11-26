@@ -91,11 +91,14 @@ export class TetrisRunde {
     const typ = this.naechster;
     this.naechster = this.ziehe();
     this.nr = (this.nr || 0) + 1;      // zählt die Steine (die Demo plant je Stein einmal)
-    this.stein = { typ, rot: 0, x: typ === "O" ? 4 : 3, y: 0 };
-    this.fall = 0; this.lock = 0; this.resets = 0; this.soft = 0; this.tiefste = this.stein.y;
+    // Der Stein erscheint gleich ganz im sichtbaren Feld (oberste Reihe direkt unter den
+    // unsichtbaren Zeilen). Ist dort kein Platz, so weit höher wie nötig; passt er gar nicht: Spielende
+    const oben = Math.min(...ZELLEN[typ][0].map(([, y]) => y));
+    this.stein = { typ, rot: 0, x: typ === "O" ? 4 : 3, y: VERSTECKT - oben };
+    this.fall = 0; this.lock = 0; this.resets = 0; this.soft = 0;
+    while (!this.passt(this.stein) && this.stein.y > -oben) this.stein.y--;
+    this.tiefste = this.stein.y;
     if (!this.passt(this.stein)) { this.tot = true; return false; }
-    // Gleich eine Zeile tiefer, damit der Stein sofort sichtbar ist
-    if (this.passt({ ...this.stein, y: 1 })) this.stein.y = 1;
     return true;
   }
   amBoden() { return !this.passt({ ...this.stein, y: this.stein.y + 1 }); }
