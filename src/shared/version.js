@@ -6,6 +6,9 @@ export const REPO = "Nomisimo/Matrix-Games";
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 
 export const CHANGELOG = {
+  "1.0.6": [
+    "Tetris am Gamepad: Dreieck (Y) ist nicht mehr belegt, sofort absetzen nur noch mit der X-Taste (A)",
+  ],
   "1.0.5": [
     "Tetris am Gamepad: Kreis (B) dreht rechtsrum, Quadrat (X) linksrum, die X-Taste (A) und Dreieck (Y) setzen den Stein sofort ab",
     "Tetris: Neue Steine erscheinen oben gleich vollständig im Feld",
