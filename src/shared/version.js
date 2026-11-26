@@ -6,6 +6,9 @@ export const REPO = "Nomisimo/Matrix-Games";
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 
 export const CHANGELOG = {
+  "1.0.4": [
+    "Tetris: Steine lassen sich nicht mehr endlos hin- und herschieben oder drehen. Hängt ein Stein kurz in der Luft (über einer Lücke oder nach einem Wandsprung nach oben), läuft die Zeit bis zum Festsetzen nicht mehr neu an. Erst wenn er tiefer fällt als zuvor, gibt es wieder die volle Zeit",
+  ],
   "1.0.3": [
     "Pause: Der PAUSE-Text steht jetzt 4 Pixel höher (alle Spiele, auch Tetris hochkant)",
   ],

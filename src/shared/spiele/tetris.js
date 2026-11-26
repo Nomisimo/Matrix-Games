@@ -92,14 +92,16 @@ export class TetrisRunde {
     this.naechster = this.ziehe();
     this.nr = (this.nr || 0) + 1;      // zählt die Steine (die Demo plant je Stein einmal)
     this.stein = { typ, rot: 0, x: typ === "O" ? 4 : 3, y: 0 };
-    this.fall = 0; this.lock = 0; this.resets = 0; this.soft = 0;
+    this.fall = 0; this.lock = 0; this.resets = 0; this.soft = 0; this.tiefste = this.stein.y;
     if (!this.passt(this.stein)) { this.tot = true; return false; }
     // Gleich eine Zeile tiefer, damit der Stein sofort sichtbar ist
     if (this.passt({ ...this.stein, y: 1 })) this.stein.y = 1;
     return true;
   }
   amBoden() { return !this.passt({ ...this.stein, y: this.stein.y + 1 }); }
-  // Erfolgreiche Bewegung am Boden setzt das Lock-Delay zurück (höchstens 15-mal je Stein)
+  /* Erfolgreiche Bewegung am Boden setzt das Lock-Delay zurück, höchstens 15-mal. Neu aufgefüllt wird
+     erst, wenn der Stein tiefer kommt als je zuvor. Hängt er nach einem Schieben oder einem Wandsprung
+     nach oben kurz in der Luft, ruht die Lock-Zeit nur, damit man ihn nicht endlos weiterschieben kann. */
   bewegt() { if (this.resets < LOCK_RESETS && this.lock > 0) { this.lock = 0; this.resets++; } }
   schiebe(dx) {
     if (this.tot || this.clearing) return false;
@@ -127,7 +129,7 @@ export class TetrisRunde {
     if (this.tot || this.clearing) return;
     const y = this.geisterY();
     this.score += 2 * (y - this.stein.y);
-    this.stein.y = y;
+    this.stein.y = y; this.tiefste = Math.max(this.tiefste, y);
     this.ton("drop");
     this.festsetzen();
   }
@@ -172,9 +174,9 @@ export class TetrisRunde {
     // Fallen: Schwerkraft oder schneller mit ↓
     const tempo = haelt(held, RUNTER) ? Math.min(SOFT, fallTempo(this.level)) : fallTempo(this.level);
     if (!this.amBoden()) {
-      this.lock = 0;
       if (++this.fall >= tempo) {
         this.fall = 0; this.stein.y++;
+        if (this.stein.y > this.tiefste) { this.tiefste = this.stein.y; this.lock = 0; this.resets = 0; }
         if (tempo === SOFT && haelt(held, RUNTER)) this.score += 1;
       }
     } else {
