@@ -650,6 +650,43 @@ test("Tetris: Stein liegt nach dem Lock-Delay fest, Stapel bis oben beendet das 
   assert.equal(over, "over");
 });
 
+test("Tetris: endloses Hin- und Herschieben am Boden setzt den Stein trotzdem fest", () => {
+  const r = new TetrisRunde(() => {}, () => 0.3);
+  r.stein = { typ: "T", rot: 0, x: 3, y: r.geisterY() };
+  r.tiefste = r.stein.y;
+  const nr = r.nr;
+  let i = 0;
+  for (; i < 60 * 60 && r.nr === nr; i++) { if (i % 4 === 0) r.key(i % 8 ? "ArrowLeft" : "ArrowRight"); r.update(new Set()); }
+  assert.ok(r.nr > nr, "Stein liegt fest");
+  assert.ok(i <= 16 * 30 + 60, `Bilder bis zum Festsetzen: ${i}`);
+});
+
+test("Tetris: Schieben über eine Lücke (Stein schwebt kurz) hält den Stein nicht endlos", () => {
+  const r = new TetrisRunde(() => {}, () => 0.3);
+  // Boden mit einem Absatz: links eine Stufe, rechts frei
+  for (let x = 0; x < 4; x++) r.feld[HOEHE - 1][x] = "Z";
+  r.stein = { typ: "O", rot: 0, x: 3, y: HOEHE - 3 };
+  r.tiefste = r.stein.y;
+  const nr = r.nr;
+  let i = 0;
+  for (; i < 60 * 60 && r.nr === nr; i++) { if (i % 6 === 0) r.key(i % 12 ? "ArrowLeft" : "ArrowRight"); r.update(new Set()); }
+  assert.ok(r.nr > nr, "Stein liegt fest");
+});
+
+test("Tetris: Drehen mit Wandsprung nach oben hält den Stein nicht endlos", () => {
+  for (const typ of ["T", "S", "Z", "L", "J", "I"]) {
+    const r = new TetrisRunde(() => {}, () => 0.3);
+    // Unebener Stapel, an dem Drehungen den Stein hochkicken können
+    for (let y = HOEHE - 3; y < HOEHE; y++) for (let x = 0; x < BREITE; x++) if ((x + y) % 3) r.feld[y][x] = "Z";
+    r.stein = { typ, rot: 0, x: 3, y: 0 };
+    r.stein.y = r.geisterY(); r.tiefste = r.stein.y;
+    const nr = r.nr;
+    let i = 0;
+    for (; i < 60 * 120 && r.nr === nr && !r.tot; i++) { if (i % 3 === 0) r.key(i % 6 ? "ArrowUp" : "KeyZ"); r.update(new Set()); }
+    assert.ok(r.nr > nr || r.tot, `${typ} liegt fest`);
+  }
+});
+
 test("Tetris: Demo mit vollem Können räumt Reihen ab und stapelt nicht bis oben", () => {
   let seed = 3;
   const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
